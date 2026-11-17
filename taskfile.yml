@@ -1,0 +1,30 @@
+version: "3"
+
+tasks:
+  db:up:
+    desc: Start Postgres and create the tripwire role and database
+    cmds:
+      - uv run python -m tripwire.db up
+
+  db:down:
+    desc: Stop Postgres (data stays in the docker volume)
+    cmds:
+      - uv run python -m tripwire.db down
+
+  schema:plan:
+    desc: Write the pending DDL to the next db/migrations/NNNNNN.sql for review
+    cmds:
+      - uv run python -m tripwire.db plan
+
+  schema:apply:
+    desc: Apply db/schema/ to the live database
+    cmds:
+      - uv run python -m tripwire.db apply
+
+  check:
+    desc: Format check, lint, validate watchers, run tests
+    cmds:
+      - uv run ruff format --check .
+      - uv run ruff check .
+      - uv run python -m tripwire check watchers
+      - uv run pytest -q
