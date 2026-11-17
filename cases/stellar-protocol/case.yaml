@@ -1,0 +1,46 @@
+# Replays real stellar-protocol history through watchers/frequent/stellar-protocol.yaml.
+# Fixtures are the files at commit 6c3fb12 and at b193384 "SEP-53: Change Status to Final".
+# Format: docs/WATCHERS.md ("Testing a watcher").
+watchers: ../../watchers/frequent/stellar-protocol.yaml
+
+stages:
+  - name: baseline is recorded silently
+    serve:
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/README.md: fixtures/index.before.md
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/sep-0053.md: fixtures/sep-0053.before.md
+    expect:
+      silent: true
+
+  - name: nothing changed
+    expect:
+      silent: true
+
+  - name: lines shift upstream but no value changes
+    serve:
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/README.md: fixtures/index.banner-added.md
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/sep-0053.md: fixtures/sep-0053.status-moved.md
+    expect:
+      silent: true
+
+  - name: SEP-53 goes final (real commit b193384)
+    serve:
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/README.md: fixtures/index.after.md
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/sep-0053.md: fixtures/sep-0053.after.md
+    expect:
+      reports:
+        - "-SEP-0053 | Final Comment Period (Final)"
+        - "+SEP-0053 | Final"
+        - "-Status: Final Comment Period (Final)"
+        - "+Status: Final"
+        - "+Version: 1.0.0"
+      changed_lines: 6  # index: 1 out + 1 in. preamble: status and version, out and in.
+
+  - name: the new state is the baseline now
+    expect:
+      silent: true
+
+  - name: upstream format breaks and the watcher says so
+    serve:
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/README.md: fixtures/not-found.txt
+    expect:
+      reports: ["ERROR", "no table with columns"]
