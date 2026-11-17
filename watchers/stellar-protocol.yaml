@@ -1,0 +1,22 @@
+# https://github.com/stellar/stellar-protocol
+# Spec: docs/WATCHERS.md
+
+# One row per SEP in the index, so a single job covers every SEP. The alert shows the
+# row that changed, e.g.  - SEP-0053 | Final Comment Period (Final)
+#                         + SEP-0053 | Final
+name: stellar SEP index statuses
+url: https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/README.md
+filter:
+  - md_table:
+      key: Number
+      key_regex: '(SEP-\d+)'
+      columns: [Status]
+---
+# A single SEP: status and version from its preamble block.
+name: stellar SEP-0053 preamble
+url: https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/sep-0053.md
+filter:
+  - kv_block:
+      scope: fenced
+      anchor: SEP
+      keys: [Status, Version]
