@@ -20,4 +20,5 @@ line-length = 100
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not live'"
 markers = ["live: hits raw.githubusercontent.com (deselect with -m 'not live')"]
