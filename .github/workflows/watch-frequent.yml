@@ -12,12 +12,13 @@ concurrency:
   cancel-in-progress: false
 env:
   CADENCE: frequent
+  UV_NO_DEV: "1"  # the scheduled job needs the runtime dependencies only
 jobs:
   watch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
       - run: uv sync --frozen --no-dev
       - name: restore snapshots from the tripwire-state branch
         run: |
@@ -33,6 +34,7 @@ jobs:
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT: ${{ secrets.TG_CHAT }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
       - name: save snapshots
         working-directory: state
         run: |
