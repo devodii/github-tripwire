@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -26,6 +27,18 @@ ROOT = Path(__file__).resolve().parent.parent
 def write_urls(watchers: list[Watcher], out: Path) -> None:
     docs = (w.model_dump(mode="json", exclude_defaults=True, exclude_none=True) for w in watchers)
     out.write_text("---\n".join(yaml.safe_dump(doc, sort_keys=False) for doc in docs))
+
+
+def render_config(source: Path, out: Path) -> None:
+    """Expand ${VAR}s from the environment and switch telegram on when both secrets exist."""
+    config = yaml.safe_load(source.read_text())
+    telegram = config.get("report", {}).get("telegram")
+    if telegram is not None:
+        telegram["bot_token"] = os.path.expandvars(str(telegram.get("bot_token", "")))
+        telegram["chat_id"] = os.path.expandvars(str(telegram.get("chat_id", "")))
+        has_secrets = all(v and "$" not in v for v in (telegram["bot_token"], telegram["chat_id"]))
+        telegram["enabled"] = bool(telegram.get("enabled")) or has_secrets
+    out.write_text(yaml.safe_dump(config, sort_keys=False))
 
 
 def urlwatch(urls: Path, cache: Path, config: Path, *args: str) -> int:
@@ -63,9 +76,11 @@ def main(argv: list[str] | None = None) -> int:
     with tempfile.TemporaryDirectory() as tmp:
         urls = Path(tmp) / "urls.yaml"
         write_urls(watchers, urls)
+        config = Path(tmp) / "urlwatch.yaml"
+        render_config(args.config, config)
         if args.command == "check":  # --list loads every job and filter, so typos fail here
-            return urlwatch(urls, Path(tmp) / "check.db", args.config, "--list")
-        return urlwatch(urls, cache, args.config)
+            return urlwatch(urls, Path(tmp) / "check.db", config, "--list")
+        return urlwatch(urls, cache, config)
 
 
 if __name__ == "__main__":
