@@ -1,0 +1,13 @@
+# Reporter and display settings. Anything not listed keeps urlwatch's default.
+display:
+  new: false        # first sighting only records the baseline, nobody gets pinged
+  error: true       # a watcher that breaks (404, format changed) is reported
+  unchanged: false
+
+report:
+  stdout:
+    enabled: true
+  telegram:
+    enabled: false  # switched on in the workflow once the secrets exist
+    bot_token: ${TG_TOKEN}
+    chat_id: ${TG_CHAT}
