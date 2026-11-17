@@ -1,0 +1,87 @@
+{
+  "additionalProperties": false,
+  "description": "One watched resource: fetch ``url``, run ``filter`` over it, alert when the result changes.",
+  "properties": {
+    "name": {
+      "description": "unique, shown in alerts",
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "url": {
+      "description": "what to fetch",
+      "format": "uri",
+      "maxLength": 2083,
+      "minLength": 1,
+      "title": "Url",
+      "type": "string"
+    },
+    "filter": {
+      "description": "steps applied in order: a hook or urlwatch filter name, or {name: options}",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        ]
+      },
+      "title": "Filter",
+      "type": "array"
+    },
+    "method": {
+      "anyOf": [
+        {
+          "enum": [
+            "GET",
+            "POST"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Method"
+    },
+    "headers": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "request headers",
+      "title": "Headers"
+    },
+    "data": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "request body for POST",
+      "title": "Data"
+    }
+  },
+  "required": [
+    "name",
+    "url"
+  ],
+  "title": "Watcher",
+  "type": "object"
+}

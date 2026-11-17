@@ -35,3 +35,8 @@ def test_check_rejects_duplicate_and_unnamed_jobs(tmp_path, capfd):
 def test_check_rejects_an_empty_folder(tmp_path, capfd):
     assert main(["check", str(tmp_path)]) == 1
     assert "no watchers found" in capfd.readouterr().err
+
+
+def test_committed_json_schema_matches_the_spec(capfd):
+    assert main(["schema"]) == 0
+    assert capfd.readouterr().out == (ROOT / "schema" / "watcher.schema.json").read_text()

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../schema/watcher.schema.json
 # https://github.com/stellar/stellar-protocol
 # Spec: docs/WATCHERS.md
 
