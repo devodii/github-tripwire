@@ -16,6 +16,7 @@ import tempfile
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 
 from tripwire import load_all
 from tripwire.registry import HOOKS
@@ -33,14 +34,17 @@ def write_urls(watchers: list[Watcher], out: Path) -> None:
 
 
 def render_config(source: Path, out: Path) -> None:
-    """Expand ${VAR}s from the environment and switch telegram on when both secrets exist."""
+    """Expand ${VAR}s from the environment and switch each reporter on when its settings exist."""
     config = yaml.safe_load(source.read_text())
-    telegram = config.get("report", {}).get("telegram")
-    if telegram is not None:
-        telegram["bot_token"] = os.path.expandvars(str(telegram.get("bot_token", "")))
-        telegram["chat_id"] = os.path.expandvars(str(telegram.get("chat_id", "")))
-        has_secrets = all(v and "$" not in v for v in (telegram["bot_token"], telegram["chat_id"]))
-        telegram["enabled"] = bool(telegram.get("enabled")) or has_secrets
+    reporters = config.get("report", {})
+    for name, keys in (("telegram", ("bot_token", "chat_id")), ("postgres", ("dsn",))):
+        reporter = reporters.get(name)
+        if reporter is None:
+            continue
+        for key in keys:
+            reporter[key] = os.path.expandvars(str(reporter.get(key, "")))
+        configured = all(reporter[k] and "$" not in reporter[k] for k in keys)
+        reporter["enabled"] = bool(reporter.get("enabled")) or configured
     out.write_text(yaml.safe_dump(config, sort_keys=False))
 
 
@@ -59,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, default=ROOT / "urlwatch.yaml")
     parser.add_argument("--cache", type=Path, help="default: state/<path name>.db")
     args = parser.parse_args(argv)
+    load_dotenv(ROOT / ".env")  # real environment variables win over the file
 
     if args.command == "schema":
         print(json.dumps(Watcher.model_json_schema(), indent=2))

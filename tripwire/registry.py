@@ -82,9 +82,11 @@ def hook(name: str) -> Callable[[Callable[..., str]], Callable[..., str]]:
 
 
 def load_all() -> list[str]:
-    """Import every module in ``tripwire.hooks`` so its hooks get registered."""
-    package = importlib.import_module("tripwire.hooks")
-    names = sorted(m.name for m in pkgutil.iter_modules(package.__path__))
-    for module in names:
-        importlib.import_module(f"tripwire.hooks.{module}")
-    return names
+    """Import every module in ``tripwire.hooks`` and ``tripwire.reporters`` so they register."""
+    loaded = []
+    for package_name in ("tripwire.hooks", "tripwire.reporters"):
+        package = importlib.import_module(package_name)
+        for module in sorted(m.name for m in pkgutil.iter_modules(package.__path__)):
+            importlib.import_module(f"{package_name}.{module}")
+            loaded.append(f"{package_name}.{module}")
+    return loaded
