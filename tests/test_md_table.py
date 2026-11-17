@@ -1,0 +1,71 @@
+import pytest
+from conftest import fixture
+
+from tripwire.hooks.md_table import md_table
+
+# stellar-protocol b193384 "SEP-53: Change Status to Final" and its parent 6c3fb12
+BEFORE = fixture("ecosystem-readme.before.md")
+AFTER = fixture("ecosystem-readme.after.md")
+OPTS = {"key": "Number", "columns": ["Status"], "key_regex": r"(SEP-\d+)"}
+
+
+def rows(text: str, opts=OPTS) -> set[str]:
+    return set(md_table(text, opts).splitlines())
+
+
+def test_real_commit_changes_only_sep_53_and_survives_a_full_table_reflow():
+    before, after = rows(BEFORE), rows(AFTER)
+    assert before - after == {"SEP-0053 | Final Comment Period (Final)"}
+    assert after - before == {"SEP-0053 | Final"}
+    assert len(before) == len(after) == 53
+
+
+def test_output_is_sorted():
+    out = md_table(AFTER, OPTS).splitlines()
+    assert out == sorted(out)
+    assert "SEP-0001 | Active" in out
+
+
+def test_multiple_columns_and_no_key_regex():
+    out = md_table(AFTER, {"key": "Number", "columns": ["Title", "Status"]}).splitlines()
+    assert "[SEP-0001](sep-0001.md) | Stellar Info File | Active" in out
+
+
+def test_header_names_are_case_insensitive():
+    assert md_table(AFTER, {**OPTS, "key": "number", "columns": ["STATUS"]}) == md_table(
+        AFTER, OPTS
+    )
+
+
+def test_shifted_lines_do_not_change_output():
+    assert md_table("# Intro\n\nnew\nlines\n\n" + AFTER, OPTS) == md_table(AFTER, OPTS)
+
+
+def test_reordered_rows_do_not_change_output():
+    lines = AFTER.splitlines()
+    first = next(i for i, line in enumerate(lines) if line.startswith("| [SEP"))
+    lines[first : first + 5] = reversed(lines[first : first + 5])
+    assert md_table("\n".join(lines), OPTS) == md_table(AFTER, OPTS)
+
+
+def test_reflowed_column_widths_do_not_change_output():
+    squeezed = "\n".join(
+        " ".join(line.split()) if line.startswith("|") else line for line in AFTER.splitlines()
+    )
+    assert md_table(squeezed, OPTS) == md_table(AFTER, OPTS)
+
+
+def test_tables_without_the_wanted_columns_are_ignored():
+    text = "| a | b |\n| - | - |\n| 1 | 2 |\n\n| Id | State |\n| -- | ----- |\n| x1 | open |\n"
+    assert md_table(text, {"key": "Id", "columns": ["State"]}) == "x1 | open"
+
+
+@pytest.mark.parametrize("opts", [{}, {"key": "Number"}, {"columns": ["Status"]}])
+def test_missing_options_are_rejected(opts):
+    with pytest.raises(ValueError, match="required"):
+        md_table(AFTER, opts)
+
+
+def test_no_matching_table_raises_instead_of_returning_empty():
+    with pytest.raises(ValueError, match="no table with columns"):
+        md_table("404: Not Found", OPTS)
