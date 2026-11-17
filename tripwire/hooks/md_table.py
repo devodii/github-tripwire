@@ -16,7 +16,7 @@ def _cells(line: str) -> list[str]:
 
 
 def _is_separator(cells: list[str]) -> bool:
-    return all(re.fullmatch(r":?-{2,}:?", c) for c in cells)
+    return all(re.fullmatch(r":?-+:?", c) for c in cells)
 
 
 class MdTableOptions(HookOptions):
