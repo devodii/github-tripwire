@@ -83,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
         urls = Path(tmp) / "urls.yaml"
         write_urls(jobs, urls)
         if args.command == "check":  # --list loads every job and filter, so typos fail here
-            return urlwatch(urls, cache, args.config, "--list")
+            return urlwatch(urls, Path(tmp) / "check.db", args.config, "--list")
         return urlwatch(urls, cache, args.config)
 
 
