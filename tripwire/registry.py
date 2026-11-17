@@ -1,15 +1,17 @@
 """The hook interface.
 
-A hook is a plain function ``(data, options) -> str`` registered under a name.
-Once registered, it can be used in ``urls.yaml`` like any built-in urlwatch filter::
+A hook is a function ``(data: str, options: SomeOptions) -> str`` where ``SomeOptions`` is a
+pydantic model subclassing ``HookOptions``. Registering it makes it usable in a watcher's
+``filter:`` list like any built-in urlwatch filter::
 
     filter:
-      - my_hook
       - my_hook:
           some_option: value
 
-To add a hook, create ``tripwire/hooks/<name>.py`` and decorate a function with
-``@hook``. Modules in that package are discovered automatically.
+To add a hook, create ``tripwire/hooks/<name>.py``: declare the options model, decorate the
+function with ``@hook("name")``. Modules in that package are discovered automatically.
+The options model is the single source of truth: it validates watcher YAML at ``check``
+time and at run time, and documents the options (``python -m tripwire hooks``).
 """
 
 from __future__ import annotations
@@ -17,37 +19,63 @@ from __future__ import annotations
 import importlib
 import pkgutil
 from collections.abc import Callable
-from typing import Any
+from typing import Any, get_type_hints
 
+from pydantic import BaseModel, ConfigDict, ValidationError
 from urlwatch.filters import FilterBase
 
-HookFn = Callable[[str, dict[str, Any]], str]
+
+class HookOptions(BaseModel):
+    """Base class for hook options. Unknown keys are rejected so typos fail loudly."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
-def hook(name: str, *, options: dict[str, str] | None = None) -> Callable[[HookFn], HookFn]:
+HOOKS: dict[str, type[HookOptions]] = {}
+
+
+def format_errors(error: ValidationError) -> str:
+    return "; ".join(
+        f"{'.'.join(str(p) for p in e['loc']) or 'options'}: {e['msg']}" for e in error.errors()
+    )
+
+
+def validate_options(name: str, raw: Any) -> HookOptions:
+    """Parse raw YAML options for hook ``name``; raises ValueError with a readable message."""
+    try:
+        return HOOKS[name].model_validate(raw or {})
+    except ValidationError as e:
+        raise ValueError(f"{name}: {format_errors(e)}") from e
+
+
+def hook(name: str) -> Callable[[Callable[..., str]], Callable[..., str]]:
     """Register ``fn`` as a urlwatch filter called ``name``.
 
-    ``options`` maps each accepted option to a short description. urlwatch rejects
-    unknown options at config load time, so typos in urls.yaml fail loudly.
-    The function receives the option dict (empty when none were given) and must
-    return the transformed text. Raise ``ValueError`` for unparseable input so
-    urlwatch reports an error instead of recording a bogus empty snapshot.
+    Raise ``ValueError`` for unparseable input so urlwatch reports an error instead of
+    recording a bogus empty snapshot.
     """
 
-    def register(fn: HookFn) -> HookFn:
+    def register(fn: Callable[..., str]) -> Callable[..., str]:
+        model = get_type_hints(fn).get("options")
+        if not (isinstance(model, type) and issubclass(model, HookOptions)):
+            raise TypeError(f"hook '{name}': 'options' must be annotated with a HookOptions model")
+
         def filter_method(self: FilterBase, data: str, subfilter: Any) -> str:
-            return fn(data, subfilter if isinstance(subfilter, dict) else {})
+            return fn(data, validate_options(name, subfilter))
 
         attrs: dict[str, Any] = {
             "__kind__": name,
             "__doc__": (fn.__doc__ or name).strip().splitlines()[0],
             "filter": filter_method,
         }
-        if options:
-            attrs["__supported_subfilters__"] = dict(options)
+        if model.model_fields:
+            attrs["__supported_subfilters__"] = {
+                key: field.description or "" for key, field in model.model_fields.items()
+            }
         else:
             attrs["__no_subfilter__"] = True
         type(f"Hook_{name}", (FilterBase,), attrs)
+        HOOKS[name] = model
         return fn
 
     return register

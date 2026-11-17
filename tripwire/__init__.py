@@ -1,5 +1,5 @@
 """Hook toolkit for github-tripwire."""
 
-from tripwire.registry import hook, load_all
+from tripwire.registry import HookOptions, hook, load_all
 
-__all__ = ["hook", "load_all"]
+__all__ = ["HookOptions", "hook", "load_all"]

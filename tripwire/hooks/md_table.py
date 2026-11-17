@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
-from tripwire import hook
+from pydantic import Field, field_validator
+
+from tripwire import HookOptions, hook
 
 _UNESCAPED_PIPE = re.compile(r"(?<!\\)\|")
 
@@ -18,26 +19,34 @@ def _is_separator(cells: list[str]) -> bool:
     return all(re.fullmatch(r":?-{2,}:?", c) for c in cells)
 
 
-@hook(
-    "md_table",
-    options={
-        "key": "header of the column that identifies a row (required)",
-        "columns": "headers of the columns to keep (required)",
-        "key_regex": "optional regex applied to the key cell, group 1 (or whole match) is the key",
-    },
-)
-def md_table(data: str, options: dict[str, Any]) -> str:
+class MdTableOptions(HookOptions):
+    key: str = Field(description="header of the column that identifies a row")
+    columns: list[str] = Field(min_length=1, description="headers of the columns to keep")
+    key_regex: str | None = Field(
+        default=None, description="regex run on the key cell, group 1 (or whole match) is the key"
+    )
+
+    @field_validator("key_regex")
+    @classmethod
+    def _compiles(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                re.compile(value)
+            except re.error as e:
+                raise ValueError(f"not a valid regex: {e}") from e
+        return value
+
+
+@hook("md_table")
+def md_table(data: str, options: MdTableOptions) -> str:
     """Reduce markdown tables to sorted 'key | value | value' lines.
 
     Columns are found by header name and rows are keyed and sorted, so reflowed tables,
     moved rows and shifted line numbers never produce a diff. Every table that has the
     key and all requested columns is merged into one output.
     """
-    key = options.get("key")
-    columns = options.get("columns")
-    if not key or not columns:
-        raise ValueError("md_table: 'key' and 'columns' are required")
-    key_regex = re.compile(options["key_regex"]) if options.get("key_regex") else None
+    key, columns = options.key, options.columns
+    key_regex = re.compile(options.key_regex) if options.key_regex else None
     wanted = [key, *columns]
 
     lines: set[str] = set()
