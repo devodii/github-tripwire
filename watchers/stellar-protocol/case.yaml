@@ -1,11 +1,14 @@
 # Replays real stellar-protocol history through the watcher.yaml next to this file.
-# Fixtures are the files at commit 6c3fb12 and at b193384 "SEP-53: Change Status to Final".
+# Files are fetched from GitHub at these exact commits on first use and kept in the snapshots
+# table of the test database, so nothing is stored in the repo.
+#   6c3fb1290ccd04f30352ffe83319d67eb992eb40  parent
+#   b1933843d71eea2a5b537b5a1af6592c4bdc6afe  "SEP-53: Change Status to Final (#1963)"
 # Format: docs/WATCHERS.md ("Testing a watcher").
 stages:
   - name: baseline is recorded silently
     serve:
-      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/README.md: fixtures/index.before.md
-      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/sep-0053.md: fixtures/sep-0053.before.md
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/README.md: &index_before stellar/stellar-protocol@6c3fb1290ccd04f30352ffe83319d67eb992eb40:ecosystem/README.md
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/sep-0053.md: &sep_before stellar/stellar-protocol@6c3fb1290ccd04f30352ffe83319d67eb992eb40:ecosystem/sep-0053.md
     expect:
       silent: true
 
@@ -15,15 +18,20 @@ stages:
 
   - name: lines shift upstream but no value changes
     serve:
-      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/README.md: fixtures/index.banner-added.md
-      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/sep-0053.md: fixtures/sep-0053.status-moved.md
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/README.md:
+        github: *index_before
+        prepend: "# Banner\n\nAnnouncement\nspanning\nlines\n\n"
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/sep-0053.md:
+        github: *sep_before
+        prepend: "Extra heading\n\n"
+        move_line: {startswith: "Status:", down: 2}
     expect:
       silent: true
 
-  - name: SEP-53 goes final (real commit b193384)
+  - name: SEP-53 goes final (the real commit)
     serve:
-      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/README.md: fixtures/index.after.md
-      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/sep-0053.md: fixtures/sep-0053.after.md
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/README.md: stellar/stellar-protocol@b1933843d71eea2a5b537b5a1af6592c4bdc6afe:ecosystem/README.md
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/sep-0053.md: stellar/stellar-protocol@b1933843d71eea2a5b537b5a1af6592c4bdc6afe:ecosystem/sep-0053.md
     expect:
       reports:
         - "-SEP-0053 | Final Comment Period (Final)"
@@ -39,6 +47,6 @@ stages:
 
   - name: upstream format breaks and the watcher says so
     serve:
-      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/README.md: fixtures/not-found.txt
+      https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/README.md: {text: "404: Not Found"}
     expect:
       reports: ["ERROR", "no table with columns"]
