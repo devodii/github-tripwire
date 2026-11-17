@@ -1,4 +1,4 @@
-"""Generic replay harness: runs every cases/*/case.yaml against its watcher file.
+"""Generic replay harness: runs every watchers/*/case.yaml against the watcher.yaml beside it.
 
 A case serves fixture files from a local server in place of the watcher's real URLs, runs
 the real watcher YAML through urlwatch once per stage, and checks what got reported.
@@ -35,11 +35,10 @@ class Stage(BaseModel):
 
 class Case(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    watchers: str
     stages: list[Stage] = Field(min_length=1)
 
 
-CASES = sorted((ROOT / "cases").glob("*/case.yaml"))
+CASES = sorted((ROOT / "watchers").glob("*/case.yaml"))
 
 
 class Upstream:
@@ -72,13 +71,13 @@ def diff_lines(out: str) -> list[str]:
 
 
 def test_there_is_at_least_one_case():
-    assert CASES, "cases/*/case.yaml not found"
+    assert CASES, "watchers/*/case.yaml not found"
 
 
 @pytest.mark.parametrize("case_file", CASES, ids=lambda p: p.parent.name)
 def test_case(case_file: Path, tmp_path, capfd):
     case = Case.model_validate(yaml.safe_load(case_file.read_text()))
-    watcher_file = (case_file.parent / case.watchers).resolve()
+    watcher_file = case_file.parent / "watcher.yaml"
 
     urls = list(dict.fromkeys(url for stage in case.stages for url in stage.serve))
     local = {url: f"/r{i}" for i, url in enumerate(urls)}
@@ -89,7 +88,7 @@ def test_case(case_file: Path, tmp_path, capfd):
             text = text.replace(url, upstream.base + local[url])
         watchers = tmp_path / "watchers"
         watchers.mkdir()
-        (watchers / watcher_file.name).write_text(text)
+        (watchers / "watcher.yaml").write_text(text)
 
         last_run = 0.0
         for stage in case.stages:

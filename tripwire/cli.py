@@ -1,8 +1,8 @@
 """`python -m tripwire check|run <path>`, plus `schema` and `hooks` for reference: thin wrapper that turns watcher YAML into a urlwatch run.
 
-<path> is a watcher file or a folder of them. Folders double as cadences: run
-`watchers/frequent` from one workflow and `watchers/daily` from another. Each path gets
-its own snapshot db under state/, so independent workflows never touch the same file.
+<path> is a watcher.yaml or the watchers/ folder. `--every NAME` runs only the watchers with
+that `every:` cadence, so each workflow runs its own cadence. Each cadence gets its own
+snapshot db under state/, so independent workflows never touch the same file.
 """
 
 from __future__ import annotations
@@ -19,13 +19,16 @@ import yaml
 
 from tripwire import load_all
 from tripwire.registry import HOOKS
-from tripwire.spec import SpecError, Watcher, load_watchers
+from tripwire.spec import SpecError, Watcher, load_watchers, select
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def write_urls(watchers: list[Watcher], out: Path) -> None:
-    docs = (w.model_dump(mode="json", exclude_defaults=True, exclude_none=True) for w in watchers)
+    docs = (
+        w.model_dump(mode="json", exclude={"every"}, exclude_defaults=True, exclude_none=True)
+        for w in watchers
+    )
     out.write_text("---\n".join(yaml.safe_dump(doc, sort_keys=False) for doc in docs))
 
 
@@ -51,7 +54,8 @@ def urlwatch(urls: Path, cache: Path, config: Path, *args: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tripwire", description=__doc__)
     parser.add_argument("command", choices=["check", "run", "schema", "hooks"])
-    parser.add_argument("path", type=Path, nargs="?", help="watcher file or folder")
+    parser.add_argument("path", type=Path, nargs="?", help="watchers folder or one watcher.yaml")
+    parser.add_argument("--every", help="only the watchers of this cadence")
     parser.add_argument("--config", type=Path, default=ROOT / "urlwatch.yaml")
     parser.add_argument("--cache", type=Path, help="default: state/<path name>.db")
     args = parser.parse_args(argv)
@@ -72,7 +76,12 @@ def main(argv: list[str] | None = None) -> int:
         print("\n".join(e.problems), file=sys.stderr)
         return 1
 
-    cache = args.cache or ROOT / "state" / f"{args.path.resolve().stem}.db"
+    watchers = select(watchers, args.every)
+    if not watchers:
+        print(f"no watcher has every: {args.every}", file=sys.stderr)
+        return 1
+
+    cache = args.cache or ROOT / "state" / f"{args.every or 'all'}.db"
     with tempfile.TemporaryDirectory() as tmp:
         urls = Path(tmp) / "urls.yaml"
         write_urls(watchers, urls)

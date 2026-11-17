@@ -1,7 +1,8 @@
 """The watcher spec: what a file in watchers/ may contain.
 
-A watcher file holds one or more YAML documents (separated by ``---``), one per job.
-Every document is parsed into ``Watcher``; see docs/WATCHERS.md for the prose version.
+Each watcher lives in its own folder, ``watchers/<name>/``, next to its replay case and
+fixtures. ``watcher.yaml`` holds one or more YAML documents (separated by ``---``), one per
+job. Every document is parsed into ``Watcher``; see docs/WATCHERS.md for the prose version.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from urlwatch.filters import FilterBase
 from tripwire.registry import HOOKS, format_errors, load_all, validate_options
 
 FilterStep = str | dict[str, Any]
+WATCHER_FILE = "watcher.yaml"
 
 
 class Watcher(BaseModel):
@@ -24,6 +26,9 @@ class Watcher(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, description="unique, shown in alerts")
+    every: str = Field(
+        min_length=1, description="cadence name, a workflow runs the watchers of one cadence"
+    )
     url: HttpUrl = Field(description="what to fetch")
     filter: list[FilterStep] = Field(
         default_factory=list,
@@ -55,8 +60,8 @@ class SpecError(Exception):
 
 
 def load_watchers(path: Path) -> list[Watcher]:
-    """Parse a watcher file, or every ``*.yaml`` under a folder. Raises SpecError."""
-    files = sorted(path.rglob("*.yaml")) if path.is_dir() else [path]
+    """Parse a watcher file, or every ``watcher.yaml`` under a folder. Raises SpecError."""
+    files = sorted(path.rglob(WATCHER_FILE)) if path.is_dir() else [path]
     watchers: list[Watcher] = []
     problems: list[str] = []
     seen: dict[str, Path] = {}
@@ -79,3 +84,8 @@ def load_watchers(path: Path) -> list[Watcher]:
     if problems:
         raise SpecError(problems)
     return watchers
+
+
+def select(watchers: list[Watcher], every: str | None) -> list[Watcher]:
+    """The watchers of one cadence, or all of them when ``every`` is None."""
+    return [w for w in watchers if every is None or w.every == every]

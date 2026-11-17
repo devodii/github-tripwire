@@ -8,6 +8,12 @@
       "title": "Name",
       "type": "string"
     },
+    "every": {
+      "description": "cadence name, a workflow runs the watchers of one cadence",
+      "minLength": 1,
+      "title": "Every",
+      "type": "string"
+    },
     "url": {
       "description": "what to fetch",
       "format": "uri",
@@ -80,6 +86,7 @@
   },
   "required": [
     "name",
+    "every",
     "url"
   ],
   "title": "Watcher",

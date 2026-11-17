@@ -4,16 +4,25 @@ A watcher says **what to fetch**, **what part of it you care about**, and nothin
 engine fetches it on a schedule, keeps only the part you extracted, and alerts when that part
 changes. No code is needed for most watchers.
 
-Files live in `watchers/<cadence>/<anything>.yaml`. The folder is the cadence: each folder gets
-its own workflow, its own cron and its own snapshot db. One file can hold many watchers,
-separated by `---`. Every watcher is validated against the spec below (`python -m tripwire
-check watchers`), and `schema/watcher.schema.json` gives editors autocomplete.
+Everything about one watcher lives in one folder:
+
+```
+watchers/my-watcher/
+  watcher.yaml   what to watch (one or more watchers, separated by ---)
+  case.yaml      its replay test
+  fixtures/      the files the test serves
+```
+
+Adding a watcher is adding a folder, removing one is deleting it. Every watcher is validated
+against the spec below (`python -m tripwire check watchers`), and `schema/watcher.schema.json`
+gives editors autocomplete.
 
 ## Fields
 
 | field     | required | meaning                                                                    |
 | --------- | -------- | -------------------------------------------------------------------------- |
 | `name`    | yes      | unique across all watchers, shown in alerts                                |
+| `every`   | yes      | cadence name, e.g. `frequent`. A workflow runs `--every <name>`            |
 | `url`     | yes      | what to fetch (raw file, API endpoint, atom feed)                          |
 | `filter`  | no       | steps applied in order. Each is `name` or `name: {options}`                |
 | `method`  | no       | `GET` (default) or `POST`                                                  |
@@ -80,12 +89,11 @@ instead of recording an empty snapshot. Add a unit test next to the other hook t
 
 ## Testing a watcher
 
-Add `cases/<name>/case.yaml`. A case replays fixture files through your real watcher YAML, one
-stage at a time, and checks what gets reported. The harness (`tests/test_cases.py`) runs every
-case, so there is nothing else to wire up.
+Add `case.yaml` and a `fixtures/` folder next to your `watcher.yaml`. A case replays the fixture
+files through that watcher, one stage at a time, and checks what gets reported. The harness
+(`tests/test_cases.py`) runs every case, so there is nothing else to wire up.
 
 ```yaml
-watchers: ../../watchers/frequent/my-watcher.yaml
 stages:
   - name: baseline is recorded silently
     serve:
@@ -106,12 +114,15 @@ Good fixtures are real: take the file at a commit before and after a change you 
 (`curl https://raw.githubusercontent.com/<owner>/<repo>/<sha>/<path>`). Always include a stage
 where the file moves around without changing a value, and one where it breaks.
 
+New cadence: pick a name, use it in `every:`, and copy `.github/workflows/watch-frequent.yml` with
+a different cron and `CADENCE`.
+
 ## Running
 
 ```sh
 uv sync
 uv run python -m tripwire check watchers            # validate
-uv run python -m tripwire run watchers/frequent     # fetch, diff, report to stdout
+uv run python -m tripwire run watchers --every frequent   # fetch, diff, report to stdout
 uv run pytest                                       # engine tests and every case
 ```
 

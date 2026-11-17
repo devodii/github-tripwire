@@ -1,8 +1,6 @@
-# Replays real stellar-protocol history through watchers/frequent/stellar-protocol.yaml.
+# Replays real stellar-protocol history through the watcher.yaml next to this file.
 # Fixtures are the files at commit 6c3fb12 and at b193384 "SEP-53: Change Status to Final".
 # Format: docs/WATCHERS.md ("Testing a watcher").
-watchers: ../../watchers/frequent/stellar-protocol.yaml
-
 stages:
   - name: baseline is recorded silently
     serve:

@@ -1,6 +1,6 @@
 name: watch frequent
-# Runs every watcher under watchers/frequent. For another cadence, copy this file, change
-# the cron and the folder name (both occurrences of "frequent"), and add the folder.
+# Runs every watcher with `every: frequent`. For another cadence, copy this file and change
+# the cron and CADENCE, then use that name in the watchers' `every:` field.
 on:
   schedule:
     - cron: "*/30 * * * *"
@@ -27,9 +27,9 @@ jobs:
           else
             git worktree add --orphan -b tripwire-state state
           fi
-      - run: uv run python -m tripwire check watchers/$CADENCE
+      - run: uv run python -m tripwire check watchers --every $CADENCE
       - name: watch
-        run: uv run python -m tripwire run watchers/$CADENCE
+        run: uv run python -m tripwire run watchers --every $CADENCE
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT: ${{ secrets.TG_CHAT }}
