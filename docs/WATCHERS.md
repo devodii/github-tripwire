@@ -89,33 +89,60 @@ instead of recording an empty snapshot. Add a unit test next to the other hook t
 
 ## Testing a watcher
 
-Add `case.yaml` and a `fixtures/` folder next to your `watcher.yaml`. A case replays the fixture
-files through that watcher, one stage at a time, and checks what gets reported. The harness
-(`tests/test_cases.py`) runs every case, so there is nothing else to wire up.
+Add `case.yaml` next to your `watcher.yaml`. A case is a short script of what the watched page
+looks like over time and what you expect to be told. The harness (`tests/test_cases.py`)
+runs every case, so there is nothing else to wire up.
 
 ```yaml
 stages:
   - name: baseline is recorded silently
     serve:
-      https://example.com/status.md: fixtures/status.before.md   # sticky until changed
+      https://example.com/status.md: &before owner/repo@<40-hex-commit>:docs/status.md
     expect: {silent: true}
-  - name: a state flips
+
+  - name: a state flips (the real commit)
     serve:
-      https://example.com/status.md: fixtures/status.after.md
+      https://example.com/status.md: owner/repo@<40-hex-commit>:docs/status.md
     expect:
       reports: ["-api | Stable", "+api | Degraded"]   # substrings of the alert
       changed_lines: 2                                # count of +/- diff lines
-  - name: upstream reflows the file
-    serve: {https://example.com/status.md: fixtures/status.reflowed.md}
+
+  - name: upstream reshuffles the file without changing a value
+    serve:
+      https://example.com/status.md:
+        github: *before
+        prepend: "# New banner\n\n"                    # also: move_line: {startswith: "Status:", down: 2}
     expect: {silent: true}
+
+  - name: upstream breaks the format
+    serve: {https://example.com/status.md: {text: "404: Not Found"}}
+    expect: {reports: ["ERROR"]}
 ```
 
-Good fixtures are real: take the file at a commit before and after a change you care about
-(`curl https://raw.githubusercontent.com/<owner>/<repo>/<sha>/<path>`). Always include a stage
-where the file moves around without changing a value, and one where it breaks.
+**Fixtures are real GitHub commits, not files in the repo.** A stage serves either
+`owner/repo@<full commit sha>:path` or literal `text:`. The first time a commit is used it is
+fetched from GitHub and stored in the `snapshots` table of the test database, then reused, so
+tests are reproducible (a commit never changes) and nothing is committed. To find commits:
+`gh api 'repos/<owner>/<repo>/commits?path=<file>'`.
 
-New cadence: pick a name, use it in `every:`, and copy `.github/workflows/watch-frequent.yml` with
-a different cron and `CADENCE`.
+Always include a stage where the file moves around without changing a value, and one where it
+breaks.
+
+## Database
+
+Postgres holds the test snapshots and, when `DATABASE_URL` is set, a history of every alert
+(`changes` table: watcher, url, new/changed/error, old and new content, diff).
+
+```sh
+cp .env.example .env          # then adjust passwords
+task db:up                    # start Postgres, create the tripwire role and database
+task schema:plan              # write pending DDL to db/migrations/NNNNNN.sql for review
+task schema:apply             # apply db/schema/ to the live database
+```
+
+The schema is plain SQL in `db/schema/{tables,indexes,...}/`, one file per object, applied with
+[pgschema](https://www.pgschema.com) exactly like the home-database repo. Edit the SQL, `plan`,
+`apply`. `db/schema/manifest.sql` is generated, never edit it by hand.
 
 ## Running
 
@@ -123,7 +150,7 @@ a different cron and `CADENCE`.
 uv sync
 uv run python -m tripwire check watchers            # validate
 uv run python -m tripwire run watchers --every frequent   # fetch, diff, report to stdout
-uv run pytest                                       # engine tests and every case
+task db:up && uv run pytest                         # engine tests and every case (needs Postgres)
 ```
 
 The first run only records a baseline. Telegram turns on by itself when `TG_TOKEN` and

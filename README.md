@@ -5,13 +5,15 @@ configured in YAML. Built on [urlwatch](https://thp.io/2008/urlwatch/): each run
 watcher, extracts the part you care about, diffs it against the last run and reports changes.
 
 - Add a watcher: [docs/WATCHERS.md](docs/WATCHERS.md)
-- `watchers/<name>/`: one folder per watcher holding `watcher.yaml`, its `case.yaml` replay test and `fixtures/`.
+- `watchers/<name>/`: one folder per watcher holding `watcher.yaml` and its `case.yaml` replay test.
 - `tripwire/hooks/`: the few extractors YAML can't express, each a small typed function.
 - `every:` in a watcher picks its schedule; one workflow per cadence runs `--every <cadence>`.
+- `db/`: Postgres schema as SQL files (pgschema). Holds test snapshots of real commits and the history of every alert.
 - Snapshots live on the `tripwire-state` branch so `main` history stays clean.
 
 ```sh
 uv sync
+cp .env.example .env && task db:up
 uv run python -m tripwire check watchers
 uv run python -m tripwire run watchers --every frequent
 uv run pytest
