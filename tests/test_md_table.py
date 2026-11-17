@@ -1,76 +1,89 @@
 import pytest
-from conftest import fixture
 
 from tripwire.hooks.md_table import MdTableOptions, md_table
 
-# stellar-protocol b193384 "SEP-53: Change Status to Final" and its parent 6c3fb12
-BEFORE = fixture("ecosystem-readme.before.md")
-AFTER = fixture("ecosystem-readme.after.md")
-OPTS = {"key": "Number", "columns": ["Status"], "key_regex": r"(SEP-\d+)"}
+DOC = """# Status page
+
+Some intro text.
+
+| Service         | Owner | State    |
+| --------------- | ----- | -------- |
+| [api](api.md)   | core  | Stable   |
+| [web](web.md)   | apps  | Beta     |
+| [jobs](jobs.md) | core  | Degraded |
+
+## Unrelated table
+
+| Name | Colour |
+| ---- | ------ |
+| sky  | blue   |
+"""
+OPTS = {"key": "Service", "columns": ["State"], "key_regex": r"\[(\w+)\]"}
 
 
-def run(text: str, opts: dict) -> str:
+def run(text: str, opts: dict = OPTS) -> str:
     return md_table(text, MdTableOptions.model_validate(opts))
 
 
-def rows(text: str, opts=OPTS) -> set[str]:
-    return set(run(text, opts).splitlines())
-
-
-def test_real_commit_changes_only_sep_53_and_survives_a_full_table_reflow():
-    before, after = rows(BEFORE), rows(AFTER)
-    assert before - after == {"SEP-0053 | Final Comment Period (Final)"}
-    assert after - before == {"SEP-0053 | Final"}
-    assert len(before) == len(after) == 53
-
-
-def test_output_is_sorted():
-    out = run(AFTER, OPTS).splitlines()
-    assert out == sorted(out)
-    assert "SEP-0001 | Active" in out
+def test_extracts_sorted_keyed_rows_and_ignores_other_tables():
+    assert run(DOC).splitlines() == ["api | Stable", "jobs | Degraded", "web | Beta"]
 
 
 def test_multiple_columns_and_no_key_regex():
-    out = run(AFTER, {"key": "Number", "columns": ["Title", "Status"]}).splitlines()
-    assert "[SEP-0001](sep-0001.md) | Stellar Info File | Active" in out
+    out = run(DOC, {"key": "Service", "columns": ["Owner", "State"]}).splitlines()
+    assert "[api](api.md) | core | Stable" in out
 
 
 def test_header_names_are_case_insensitive():
-    assert run(AFTER, {**OPTS, "key": "number", "columns": ["STATUS"]}) == run(AFTER, OPTS)
+    assert run(DOC, {**OPTS, "key": "service", "columns": ["STATE"]}) == run(DOC)
+
+
+def test_a_value_change_is_the_only_difference():
+    changed = DOC.replace("Beta    ", "Stable  ")
+    assert set(run(DOC).splitlines()) ^ set(run(changed).splitlines()) == {
+        "web | Beta",
+        "web | Stable",
+    }
 
 
 def test_shifted_lines_do_not_change_output():
-    assert run("# Intro\n\nnew\nlines\n\n" + AFTER, OPTS) == run(AFTER, OPTS)
+    assert run("# New heading\n\nnew\nlines\n\n" + DOC) == run(DOC)
 
 
 def test_reordered_rows_do_not_change_output():
-    lines = AFTER.splitlines()
-    first = next(i for i, line in enumerate(lines) if line.startswith("| [SEP"))
-    lines[first : first + 5] = reversed(lines[first : first + 5])
-    assert run("\n".join(lines), OPTS) == run(AFTER, OPTS)
+    lines = DOC.splitlines()
+    first = next(i for i, line in enumerate(lines) if line.startswith("| [api"))
+    lines[first : first + 3] = reversed(lines[first : first + 3])
+    assert run("\n".join(lines)) == run(DOC)
 
 
 def test_reflowed_column_widths_do_not_change_output():
-    squeezed = "\n".join(
-        " ".join(line.split()) if line.startswith("|") else line for line in AFTER.splitlines()
-    )
-    assert run(squeezed, OPTS) == run(AFTER, OPTS)
+    squeezed = "\n".join(" ".join(x.split()) if x.startswith("|") else x for x in DOC.splitlines())
+    assert run(squeezed) == run(DOC)
+
+
+def test_rows_moving_between_tables_do_not_change_output():
+    first, second = "| Service | Owner | State |\n| - | - | - |\n", "\n\n"
+    split = first + "| [api] | core | Stable |\n" + second + first + "| [web] | apps | Beta |\n"
+    joined = first + "| [web] | apps | Beta |\n| [api] | core | Stable |\n"
+    assert run(split) == run(joined)
 
 
 def test_tables_without_the_wanted_columns_are_ignored():
-    text = "| a | b |\n| - | - |\n| 1 | 2 |\n\n| Id | State |\n| -- | ----- |\n| x1 | open |\n"
-    assert run(text, {"key": "Id", "columns": ["State"]}) == "x1 | open"
+    assert run("| a | b |\n| - | - |\n| 1 | 2 |\n", {"key": "a", "columns": ["b"]}) == "1 | 2"
+    with pytest.raises(ValueError, match="no table with columns"):
+        run("| a | b |\n| - | - |\n| 1 | 2 |\n")
 
 
-@pytest.mark.parametrize("opts", [{}, {"key": "Number"}, {"columns": ["Status"]}])
-def test_missing_options_are_rejected(opts):
-    with pytest.raises(ValueError, match="required"):
-        run(AFTER, opts)
+def test_missing_options_are_rejected():
+    for opts in ({}, {"key": "Id"}, {"columns": ["State"]}):
+        with pytest.raises(ValueError, match="Field required"):
+            run(DOC, opts)
 
 
 def test_no_matching_table_raises_instead_of_returning_empty():
     with pytest.raises(ValueError, match="no table with columns"):
-        run("404: Not Found", OPTS)
+        run("404: Not Found")
 
 
 def test_invalid_key_regex_is_rejected_when_options_are_parsed():
@@ -80,4 +93,4 @@ def test_invalid_key_regex_is_rejected_when_options_are_parsed():
 
 def test_unknown_option_is_rejected():
     with pytest.raises(ValueError, match="keyy"):
-        MdTableOptions.model_validate({"keyy": "Number", "columns": ["Status"]})
+        MdTableOptions.model_validate({"keyy": "Id", "columns": ["State"]})
