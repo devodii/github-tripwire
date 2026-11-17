@@ -14,7 +14,7 @@ from conftest import ROOT, fixture
 from tripwire.cli import main
 
 RAW = "https://raw.githubusercontent.com/stellar/stellar-protocol/"
-WATCHER = ROOT / "watchers" / "stellar-protocol.yaml"
+WATCHER = ROOT / "watchers" / "frequent" / "stellar-protocol.yaml"
 README, SEP53 = "/master/ecosystem/README.md", "/master/ecosystem/sep-0053.md"
 
 
