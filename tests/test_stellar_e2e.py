@@ -120,7 +120,18 @@ def test_check_accepts_the_real_watchers():
 def test_check_rejects_unknown_filter_options(tmp_path, capfd):
     bad = tmp_path / "bad.yaml"
     bad.write_text("name: x\nurl: http://x\nfilter:\n  - md_table:\n      keyy: Number\n")
-    assert main(["check", str(bad)]) != 0
+    assert main(["check", str(bad)]) == 1
+    assert "keyy: Extra inputs are not permitted" in capfd.readouterr().err
+
+
+def test_check_rejects_unknown_filters_and_unknown_job_keys(tmp_path, capfd):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "name: a\nurl: http://a\nfilter: [nope]\n---\nname: b\nurl: http://b\nextra: 1\n"
+    )
+    assert main(["check", str(bad)]) == 1
+    err = capfd.readouterr().err
+    assert "Unknown filter kind: nope" in err and "extra: Extra inputs" in err
 
 
 def test_check_rejects_duplicate_and_unnamed_jobs(tmp_path, capfd):
@@ -128,4 +139,4 @@ def test_check_rejects_duplicate_and_unnamed_jobs(tmp_path, capfd):
     bad.write_text("name: x\nurl: http://x\n---\nname: x\nurl: http://y\n---\nurl: http://z\n")
     assert main(["check", str(bad)]) == 1
     err = capfd.readouterr().err
-    assert "duplicate job name 'x'" in err and "without a 'name'" in err
+    assert "duplicate name 'x'" in err and "job #3: name: Field required" in err
