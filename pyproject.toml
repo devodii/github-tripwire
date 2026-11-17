@@ -1,0 +1,22 @@
+[project]
+name = "github-tripwire"
+version = "0.1.0"
+description = "Watch GitHub files for content changes with urlwatch, configured in YAML"
+requires-python = ">=3.11"
+dependencies = [
+    "urlwatch==2.29",
+    "psycopg[binary]>=3.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: hits raw.githubusercontent.com (deselect with -m 'not live')"]
