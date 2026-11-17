@@ -24,7 +24,7 @@ class Watcher(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, description="unique, shown in alerts")
-    url: HttpUrl = Field(description="what to fetch, e.g. a raw.githubusercontent.com file")
+    url: HttpUrl = Field(description="what to fetch")
     filter: list[FilterStep] = Field(
         default_factory=list,
         description="steps applied in order: a hook or urlwatch filter name, or {name: options}",
