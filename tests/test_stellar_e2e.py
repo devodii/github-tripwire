@@ -51,7 +51,12 @@ def watch(upstream, tmp_path, capfd):
     local.write_text(WATCHER.read_text().replace(RAW, upstream["base"]))
     cache = tmp_path / "cache.db"
 
+    last_run = [0.0]
+
     def run():
+        # urlwatch picks the latest snapshot by whole-second timestamp, so space runs apart
+        time.sleep(max(0.0, last_run[0] + 1.1 - time.monotonic()))
+        last_run[0] = time.monotonic()
         capfd.readouterr()
         code = main(["run", str(local.parent), "--cache", str(cache)])
         return code, capfd.readouterr().out
@@ -86,7 +91,6 @@ def test_real_status_change_is_reported_as_exactly_that_change(watch, upstream):
     ]
     # index: one row out and one in. preamble: status out and in, version out and in.
     assert len(changed) == 2 + 4
-    time.sleep(1.1)  # urlwatch orders snapshots by whole-second timestamp
     assert watch() == (0, "")  # the new state is now the baseline
 
 
