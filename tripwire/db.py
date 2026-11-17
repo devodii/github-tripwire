@@ -4,23 +4,29 @@ Same approach as the home-database repo: the desired state is plain SQL under db
 (tables/, indexes/, ...), pgschema diffs it against the live database, and
 `plan` records the DDL it would run as a numbered file under db/migrations/.
 
-    python -m tripwire.db up|down|plan|apply
+    python -m tripwire.db up|down|plan|preview|apply [--url-var NAME]
+
+`--url-var` picks which environment variable (or .env entry) holds the target database URL,
+e.g. `apply --url-var PROD_DATABASE_URL`. The default is DATABASE_URL.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
+from dotenv import dotenv_values
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_DIR = ROOT / "db"
+LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 LAYERS = ["extensions", "types", "functions", "tables", "constraints", "indexes", "triggers"]
 
 
@@ -28,9 +34,8 @@ class DbSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
 
     postgres_superuser: str = "postgres"
-    postgres_superuser_password: SecretStr
+    postgres_superuser_password: SecretStr | None = None  # only the local compose server needs it
     pgschema_image: str = "pgplex/pgschema:latest"
-    database_url: str
 
 
 @dataclass(frozen=True)
@@ -42,27 +47,43 @@ class Target:
     host: str
     port: int
     name: str
+    sslmode: str = "disable"
+
+    @property
+    def is_local(self) -> bool:
+        return self.host in LOCAL_HOSTS
 
     @classmethod
     def parse(cls, url: str) -> Target:
         u = urlparse(url)
         if u.scheme not in ("postgresql", "postgres") or not (u.username and u.path[1:]):
             raise ValueError("DATABASE_URL must look like postgresql://user:password@host:port/db")
+        host = u.hostname or "localhost"
+        default_ssl = "disable" if host in LOCAL_HOSTS else "require"
+        sslmode = (parse_qs(u.query).get("sslmode") or [default_ssl])[0]
         return cls(
-            unquote(u.username), unquote(u.password or ""), u.hostname or "localhost",
-            u.port or 5432, u.path[1:],
+            unquote(u.username), unquote(u.password or ""), host,
+            u.port or 5432, u.path[1:], sslmode,
         )  # fmt: skip
 
     def with_name(self, name: str) -> Target:
-        return Target(self.user, self.password, self.host, self.port, name)
+        return Target(self.user, self.password, self.host, self.port, name, self.sslmode)
 
     @property
     def url(self) -> str:
         return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
 
 
+def database_url(var: str = "DATABASE_URL") -> str:
+    """The URL in environment variable `var`, falling back to .env. Real env vars win."""
+    value = os.environ.get(var) or dotenv_values(ROOT / ".env").get(var)
+    if not value:
+        raise SystemExit(f"{var} is not set in the environment or .env")
+    return value
+
+
 def settings() -> DbSettings:
-    return DbSettings()  # type: ignore[call-arg]  # values come from .env or the environment
+    return DbSettings()
 
 
 def compose(*args: str, input: str | None = None, check: bool = True) -> int:
@@ -73,6 +94,8 @@ def compose(*args: str, input: str | None = None, check: bool = True) -> int:
 def ensure_database(target: Target) -> None:
     """Create (or refresh the password of) the role and the database it owns. Safe to rerun."""
     s = settings()
+    if s.postgres_superuser_password is None:
+        raise SystemExit("POSTGRES_SUPERUSER_PASSWORD is not set in the environment or .env")
     sql = (
         "SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'role', :'pw')\n"
         "WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role')\\gexec\n"
@@ -104,21 +127,31 @@ def next_migration(migrations: Path = DB_DIR / "migrations") -> Path:
     return migrations / f"{max(numbers, default=0) + 1:06d}.sql"
 
 
-def run_pgschema(command: str, target: Target, *extra: str) -> int:
-    """Run pgschema in Docker against `target`. The container reaches the host-published port."""
-    host = "host.docker.internal"
-    cmd = [
-        "docker", "run", "--rm", "-i", "--add-host", f"{host}:host-gateway",
-        "-e", f"PGPASSWORD={target.password}", "-v", f"{DB_DIR}:/db", "-w", "/db",
+def pgschema_command(command: str, target: Target, *extra: str) -> list[str]:
+    """The `docker run` line for pgschema.
+
+    A local target is reached through the host-published port (and needs the host-gateway
+    alias). A remote one is reached directly, and must not get that alias.
+    """
+    host = "host.docker.internal" if target.is_local else target.host
+    ssl = target.sslmode
+    docker = ["docker", "run", "--rm", "-i"]
+    if target.is_local:
+        docker += ["--add-host", "host.docker.internal:host-gateway"]
+    return [
+        *docker, "-e", f"PGPASSWORD={target.password}", "-v", f"{DB_DIR}:/db", "-w", "/db",
         settings().pgschema_image, command,
         "--host", host, "--port", str(target.port), "--db", target.name, "--user", target.user,
-        "--schema", "public", "--sslmode", "disable",
+        "--schema", "public", "--sslmode", ssl,
         # diff against this database itself instead of pgschema's embedded Postgres
         "--plan-host", host, "--plan-port", str(target.port), "--plan-db", target.name,
-        "--plan-user", target.user, "--plan-password", target.password, "--plan-sslmode", "disable",
+        "--plan-user", target.user, "--plan-password", target.password, "--plan-sslmode", ssl,
         *extra,
     ]  # fmt: skip
-    return subprocess.run(cmd, check=False).returncode
+
+
+def run_pgschema(command: str, target: Target, *extra: str) -> int:
+    return subprocess.run(pgschema_command(command, target, *extra), check=False).returncode
 
 
 def plan(target: Target) -> int:
@@ -138,6 +171,12 @@ def plan(target: Target) -> int:
     return 0
 
 
+def preview(target: Target) -> int:
+    """Print the DDL that `apply` would run, without writing a migration file or changing anything."""
+    generate_manifest()
+    return run_pgschema("plan", target, "--file", "/db/schema/manifest.sql")
+
+
 def apply(target: Target) -> int:
     generate_manifest()
     return run_pgschema("apply", target, "--file", "/db/schema/manifest.sql", "--auto-approve")
@@ -145,20 +184,22 @@ def apply(target: Target) -> int:
 
 def up() -> int:
     compose("up", "-d", "--wait")
-    ensure_database(Target.parse(settings().database_url))
+    ensure_database(Target.parse(database_url()))
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tripwire.db", description=__doc__)
-    parser.add_argument("command", choices=["up", "down", "plan", "apply"])
-    command = parser.parse_args(argv).command
+    parser.add_argument("command", choices=["up", "down", "plan", "preview", "apply"])
+    parser.add_argument("--url-var", default="DATABASE_URL", help="env var holding the target URL")
+    args = parser.parse_args(argv)
+    command = args.command
     if command == "up":
         return up()
     if command == "down":
         return compose("down")
-    target = Target.parse(settings().database_url)
-    return {"plan": plan, "apply": apply}[command](target)
+    target = Target.parse(database_url(args.url_var))
+    return {"plan": plan, "preview": preview, "apply": apply}[command](target)
 
 
 if __name__ == "__main__":

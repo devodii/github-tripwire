@@ -23,7 +23,7 @@ def clean_env(monkeypatch):
 @pytest.fixture(scope="session")
 def test_db_url() -> str:
     """A separate `tripwire_test` database with the real schema applied through pgschema."""
-    target = db.Target.parse(db.settings().database_url).with_name("tripwire_test")
+    target = db.Target.parse(db.database_url()).with_name("tripwire_test")
     try:
         db.ensure_database(target)
     except (subprocess.CalledProcessError, OSError) as e:
