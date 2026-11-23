@@ -1,6 +1,11 @@
 # yaml-language-server: $schema=../../schema/watcher.schema.json
-# https://github.com/stellar/stellar-protocol
-# Spec: docs/WATCHERS.md
+# Everything we watch in https://github.com/stellar/stellar-protocol. Spec: docs/WATCHERS.md
+#
+# `every: frequent` jobs are cron-friendly content checks (a status flips). `every: live` jobs
+# are the activity feed: windows over the newest items, reshaped by jq into one line per item,
+# with `additions_only` so items scrolling out of a window never alert. They are meant for
+# `tripwire serve --every live` and need GH_READ_TOKEN (any token that reads public repos).
+
 
 # One row per SEP in the index, so a single job covers every SEP. The alert shows the
 # row that changed, e.g.  - SEP-0053 | Final Comment Period (Final)
@@ -23,3 +28,66 @@ filter:
       scope: fenced
       anchor: SEP
       keys: [Status, Version]
+---
+
+name: stellar issues and pull requests
+every: live
+url: https://api.github.com/repos/stellar/stellar-protocol/issues?state=all&sort=updated&direction=desc&per_page=30
+headers:
+  Authorization: Bearer ${GH_READ_TOKEN}
+  Accept: application/vnd.github+json
+  X-GitHub-Api-Version: "2022-11-28"
+additions_only: true
+filter:
+  - jq_lines:
+      query: '.[] | (if .pull_request then "PR" else "issue" end) as $kind | (if .pull_request.merged_at then "merged" else .state end) as $state | "\(if .pull_request then "🔀" else "🆕" end) \($kind) #\(.number) [\($state)] \(.title) by \(.user.login) \(.html_url)"'
+---
+name: stellar issue and pull request comments
+every: live
+url: https://api.github.com/repos/stellar/stellar-protocol/issues/comments?sort=created&direction=desc&per_page=30
+headers:
+  Authorization: Bearer ${GH_READ_TOKEN}
+  Accept: application/vnd.github+json
+  X-GitHub-Api-Version: "2022-11-28"
+additions_only: true
+filter:
+  - jq_lines:
+      query: '.[] | "💬 \(.user.login) on #\(.issue_url | split("/") | last): \(.body | gsub("\\s+"; " ") | .[:240]) \(.html_url)"'
+---
+name: stellar pull request review comments
+every: live
+url: https://api.github.com/repos/stellar/stellar-protocol/pulls/comments?sort=created&direction=desc&per_page=30
+headers:
+  Authorization: Bearer ${GH_READ_TOKEN}
+  Accept: application/vnd.github+json
+  X-GitHub-Api-Version: "2022-11-28"
+additions_only: true
+filter:
+  - jq_lines:
+      query: '.[] | "🔎 \(.user.login) reviewed #\(.pull_request_url | split("/") | last) in \(.path): \(.body | gsub("\\s+"; " ") | .[:240]) \(.html_url)"'
+---
+name: stellar discussions
+every: live
+url: https://api.github.com/graphql
+method: POST
+headers:
+  Authorization: Bearer ${GH_READ_TOKEN}
+  Content-Type: application/json
+data: '{"query": "{repository(owner:\"stellar\",name:\"stellar-protocol\"){discussions(first:30,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title category{name} author{login}}}}}"}'
+additions_only: true
+filter:
+  - jq_lines:
+      query: '.data.repository.discussions.nodes[] | "🗣 discussion #\(.number) [\(.category.name)] \(.title) by \(.author.login // "ghost") https://github.com/stellar/stellar-protocol/discussions/\(.number)"'
+---
+name: stellar discussion comments
+every: live
+url: https://api.github.com/graphql
+method: POST
+headers:
+  Authorization: Bearer ${GH_READ_TOKEN}
+  Content-Type: application/json
+data: '{"query": "{repository(owner:\"stellar\",name:\"stellar-protocol\"){discussions(first:15,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title comments(last:10){nodes{url bodyText author{login} replies(last:5){nodes{url bodyText author{login}}}}}}}}}"}'
+additions_only: true
+filter:
+  - jq_lines:
+      query: '.data.repository.discussions.nodes[] | . as $d | .comments.nodes[] | (., .replies.nodes[]) | "💬 \(.author.login // "ghost") in discussion #\($d.number) (\($d.title[:50])): \(.bodyText | gsub("\\s+"; " ") | .[:240]) \(.url)"'

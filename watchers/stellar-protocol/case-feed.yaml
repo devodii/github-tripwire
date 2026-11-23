@@ -1,0 +1,103 @@
+# The live activity feed, replayed. API responses are small hand-trimmed copies of the real
+# GitHub response shapes (see the jq in watcher.yaml for the fields that matter).
+only:
+  - stellar issues and pull requests
+  - stellar issue and pull request comments
+  - stellar pull request review comments
+  - stellar discussions
+  - stellar discussion comments
+env:
+  GH_READ_TOKEN: test-token
+
+stages:
+  - name: baseline is recorded silently
+    serve:
+      stellar issues and pull requests:
+        text: '[{"number":2041,"state":"open","title":"SEP: Preferred Wallet Resolution","user":{"login":"tupui"},"html_url":"https://github.com/stellar/stellar-protocol/pull/2041","pull_request":{"merged_at":null}},{"number":2027,"state":"open","title":"Signed messages for contract accounts","user":{"login":"sayweer"},"html_url":"https://github.com/stellar/stellar-protocol/issues/2027"}]'
+      stellar issue and pull request comments:
+        text: '[{"id":2,"user":{"login":"bob"},"issue_url":"https://api.github.com/repos/stellar/stellar-protocol/issues/2027","body":"Agree with the approach","html_url":"https://github.com/stellar/stellar-protocol/issues/2027#issuecomment-2"},{"id":1,"user":{"login":"alice"},"issue_url":"https://api.github.com/repos/stellar/stellar-protocol/issues/2027","body":"Opened for discussion","html_url":"https://github.com/stellar/stellar-protocol/issues/2027#issuecomment-1"}]'
+      stellar pull request review comments:
+        text: '[{"user":{"login":"leighmcculloch"},"pull_request_url":"https://api.github.com/repos/stellar/stellar-protocol/pulls/2063","path":"core/cap-0089.md","body":"+1 that reads better","html_url":"https://github.com/stellar/stellar-protocol/pull/2063#discussion_r1"}]'
+      stellar discussions:
+        text: '{"data":{"repository":{"discussions":{"nodes":[{"number":2049,"title":"[CAP-90] Custom signature payload","category":{"name":"Core Advancement Proposals"},"author":{"login":"dmkozh"}},{"number":2026,"title":"SEP proposal: Clear signing","category":{"name":"Stellar Ecosystem Proposals"},"author":{"login":"kingfavourjudah"}}]}}}}'
+      stellar discussion comments:
+        text: '{"data":{"repository":{"discussions":{"nodes":[{"number":2049,"title":"[CAP-90] Custom signature payload","comments":{"nodes":[{"url":"https://github.com/stellar/stellar-protocol/discussions/2049#discussioncomment-1","bodyText":"Thanks for drafting CAP-90","author":{"login":"brozorec"},"replies":{"nodes":[]}}]}}]}}}}'
+    expect:
+      silent: true
+
+  - name: nothing happened
+    expect:
+      silent: true
+
+  - name: someone comments on an issue, and the oldest comment leaves the window
+    serve:
+      stellar issue and pull request comments:
+        text: '[{"id":3,"user":{"login":"carol"},"issue_url":"https://api.github.com/repos/stellar/stellar-protocol/issues/2027","body":"Looks good to me,\n   one nit below","html_url":"https://github.com/stellar/stellar-protocol/issues/2027#issuecomment-3"},{"id":2,"user":{"login":"bob"},"issue_url":"https://api.github.com/repos/stellar/stellar-protocol/issues/2027","body":"Agree with the approach","html_url":"https://github.com/stellar/stellar-protocol/issues/2027#issuecomment-2"}]'
+    expect:
+      reports:
+        - "+💬 carol on #2027: Looks good to me, one nit below https://github.com/stellar/stellar-protocol/issues/2027#issuecomment-3"
+      not_reports: ["alice"]
+      changed_lines: 1
+
+  - name: a pull request is merged
+    serve:
+      stellar issues and pull requests:
+        text: '[{"number":2041,"state":"closed","title":"SEP: Preferred Wallet Resolution","user":{"login":"tupui"},"html_url":"https://github.com/stellar/stellar-protocol/pull/2041","pull_request":{"merged_at":"2026-11-23T09:00:00Z"}},{"number":2027,"state":"open","title":"Signed messages for contract accounts","user":{"login":"sayweer"},"html_url":"https://github.com/stellar/stellar-protocol/issues/2027"}]'
+    expect:
+      reports: ["+🔀 PR #2041 [merged] SEP: Preferred Wallet Resolution by tupui"]
+      changed_lines: 1
+
+  - name: a new issue is opened
+    serve:
+      stellar issues and pull requests:
+        text: '[{"number":2070,"state":"open","title":"Clarify memo handling","user":{"login":"dave"},"html_url":"https://github.com/stellar/stellar-protocol/issues/2070"},{"number":2041,"state":"closed","title":"SEP: Preferred Wallet Resolution","user":{"login":"tupui"},"html_url":"https://github.com/stellar/stellar-protocol/pull/2041","pull_request":{"merged_at":"2026-11-23T09:00:00Z"}}]'
+    expect:
+      reports: ["+🆕 issue #2070 [open] Clarify memo handling by dave"]
+      changed_lines: 1
+
+  - name: a review comment lands on a pull request
+    serve:
+      stellar pull request review comments:
+        text: '[{"user":{"login":"dmkozh"},"pull_request_url":"https://api.github.com/repos/stellar/stellar-protocol/pulls/2063","path":"core/cap-0089.md","body":"nit: ambiguous","html_url":"https://github.com/stellar/stellar-protocol/pull/2063#discussion_r2"},{"user":{"login":"leighmcculloch"},"pull_request_url":"https://api.github.com/repos/stellar/stellar-protocol/pulls/2063","path":"core/cap-0089.md","body":"+1 that reads better","html_url":"https://github.com/stellar/stellar-protocol/pull/2063#discussion_r1"}]'
+    expect:
+      reports: ["+🔎 dmkozh reviewed #2063 in core/cap-0089.md: nit: ambiguous https://github.com/stellar/stellar-protocol/pull/2063#discussion_r2"]
+      changed_lines: 1
+
+  - name: a discussion is started
+    serve:
+      stellar discussions:
+        text: '{"data":{"repository":{"discussions":{"nodes":[{"number":2071,"title":"Standardise clear signing","category":{"name":"Stellar Ecosystem Proposals"},"author":{"login":"erin"}},{"number":2049,"title":"[CAP-90] Custom signature payload","category":{"name":"Core Advancement Proposals"},"author":{"login":"dmkozh"}}]}}}}'
+    expect:
+      reports: ["+🗣 discussion #2071 [Stellar Ecosystem Proposals] Standardise clear signing by erin https://github.com/stellar/stellar-protocol/discussions/2071"]
+      changed_lines: 1
+
+  - name: someone replies inside a discussion thread, and one author has been deleted
+    serve:
+      stellar discussion comments:
+        text: '{"data":{"repository":{"discussions":{"nodes":[{"number":2049,"title":"[CAP-90] Custom signature payload","comments":{"nodes":[{"url":"https://github.com/stellar/stellar-protocol/discussions/2049#discussioncomment-1","bodyText":"Thanks for drafting CAP-90","author":{"login":"brozorec"},"replies":{"nodes":[{"url":"https://github.com/stellar/stellar-protocol/discussions/2049#discussioncomment-2","bodyText":"I agree with this","author":{"login":"erin"}},{"url":"https://github.com/stellar/stellar-protocol/discussions/2049#discussioncomment-3","bodyText":"Same here","author":null}]}}]}}]}}}}'
+    expect:
+      reports:
+        - "+💬 erin in discussion #2049 ([CAP-90] Custom signature payload): I agree with this https://github.com/stellar/stellar-protocol/discussions/2049#discussioncomment-2"
+        - "+💬 ghost in discussion #2049 ([CAP-90] Custom signature payload): Same here"
+      changed_lines: 2
+
+  - name: items only age out of a window, which is not news
+    serve:
+      stellar issue and pull request comments:
+        text: '[{"id":3,"user":{"login":"carol"},"issue_url":"https://api.github.com/repos/stellar/stellar-protocol/issues/2027","body":"Looks good to me,\n   one nit below","html_url":"https://github.com/stellar/stellar-protocol/issues/2027#issuecomment-3"}]'
+    expect:
+      silent: true
+
+  - name: GitHub rate limits us and the watcher says so
+    serve:
+      stellar issue and pull request comments:
+        text: '{"message":"API rate limit exceeded","documentation_url":"https://docs.github.com/rest"}'
+    expect:
+      reports: ["ERROR", "stellar issue and pull request comments", "query failed"]
+
+  - name: GitHub recovers and nothing new happened
+    serve:
+      stellar issue and pull request comments:
+        text: '[{"id":3,"user":{"login":"carol"},"issue_url":"https://api.github.com/repos/stellar/stellar-protocol/issues/2027","body":"Looks good to me,\n   one nit below","html_url":"https://github.com/stellar/stellar-protocol/issues/2027#issuecomment-3"}]'
+    expect:
+      silent: true
