@@ -1,0 +1,60 @@
+# A SEP's life in the index table, replayed through seven real consecutive commits to
+# ecosystem/ in stellar-protocol (files fetched from GitHub once, cached in Postgres):
+#   93a1b54  SEP-60 added           7a59faf  SEP-61 created as a Draft
+#   f2d3649  SEP-23 document edit   ded60f5  bulk status sync
+#   ae99418  SEP-13 document edit   379a0b5  SEP-51 document edit
+#   23d0cd3  SEP-56 Draft -> Final Comment Period
+# Edits that only touch a SEP's own document do not change the table: those are what the
+# `stellar SEPs commits` watcher is for (see case-sep-commits.yaml).
+only: [stellar SEP index]
+stages:
+  - name: baseline is recorded silently
+    serve:
+      stellar SEP index: stellar/stellar-protocol@93a1b54ce347072842a58a078872f347608bb021:ecosystem/README.md
+    expect:
+      silent: true
+
+  - name: SEP-61 is created as a Draft
+    serve:
+      stellar SEP index: stellar/stellar-protocol@7a59fafa2e2a3efc3119a4b42cae7d15aa37e330:ecosystem/README.md
+    expect:
+      reports: ["+SEP-0061 | Trustline Onboarder. | Draft"]
+      changed_lines: 1  # the whole table was reflowed upstream, and still only the new row shows
+
+  - name: a SEP document is edited but the table is not
+    serve:
+      stellar SEP index: stellar/stellar-protocol@f2d364902615af726b3533021403c8b225aa6e5d:ecosystem/README.md
+    expect:
+      silent: true
+
+  - name: a bulk sync changes many statuses and adds rows
+    serve:
+      stellar SEP index: stellar/stellar-protocol@ded60f56201478b82b341151a6c44f7d1a4aec6e:ecosystem/README.md
+    expect:
+      reports:
+        - "-SEP-0007 | URI Scheme to facilitate delegated signing | Final"
+        - "+SEP-0007 | URI Scheme to facilitate delegated signing | Active"
+        - "+SEP-0025 | New account deposit | Draft"
+        - "+SEP-0027 | Asset Information | Draft"
+      changed_lines: 13
+
+  - name: two more document-only edits leave the table alone
+    serve:
+      stellar SEP index: stellar/stellar-protocol@ae994187e5e3d68308de1f8cf0d546aeafe79e03:ecosystem/README.md
+    expect:
+      silent: true
+
+  - name: another document-only edit
+    serve:
+      stellar SEP index: stellar/stellar-protocol@379a0b55423d406c20e5378639521930e3ffd935:ecosystem/README.md
+    expect:
+      silent: true
+
+  - name: SEP-56 moves from Draft to Final Comment Period (the real Nov 18 alert)
+    serve:
+      stellar SEP index: stellar/stellar-protocol@23d0cd3daa9d5680b684bb2fedc289176c26cdc9:ecosystem/README.md
+    expect:
+      reports:
+        - "-SEP-0056 | Tokenized Vault Standard | Draft"
+        - "+SEP-0056 | Tokenized Vault Standard | Final Comment Period"
+      changed_lines: 2

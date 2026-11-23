@@ -1,0 +1,41 @@
+# The commit feed for ecosystem/: every merged change to any SEP shows up, including edits
+# that never reach the index table. Responses are small copies of GitHub's real shape.
+only: [stellar SEPs commits]
+env:
+  GH_READ_TOKEN: test-token
+
+stages:
+  - name: baseline is recorded silently
+    serve:
+      stellar SEPs commits:
+        text: '[{"html_url":"https://github.com/stellar/stellar-protocol/commit/c2","author":{"login":"ozgunozerk"},"commit":{"message":"SEP-56:  Update status to FCP (Final) (#2067)","author":{"name":"Ozgun"}}},{"html_url":"https://github.com/stellar/stellar-protocol/commit/c1","author":{"login":"overcat"},"commit":{"message":"SEP-51: add the W strkey for muxed contract addresses (#2068)","author":{"name":"overcat"}}}]'
+    expect:
+      silent: true
+
+  - name: nothing merged
+    expect:
+      silent: true
+
+  - name: a SEP is edited (only the first line of the message, and a link, are shown)
+    serve:
+      stellar SEPs commits:
+        text: '[{"html_url":"https://github.com/stellar/stellar-protocol/commit/c3","author":{"login":"leighmcculloch"},"commit":{"message":"SEP-13: change status from rejected to abandoned (#2062)\n\nA long explanation that should never reach the alert.","author":{"name":"Leigh"}}},{"html_url":"https://github.com/stellar/stellar-protocol/commit/c2","author":{"login":"ozgunozerk"},"commit":{"message":"SEP-56:  Update status to FCP (Final) (#2067)","author":{"name":"Ozgun"}}}]'
+    expect:
+      reports: ["+📝 leighmcculloch: SEP-13: change status from rejected to abandoned (#2062) https://github.com/stellar/stellar-protocol/commit/c3"]
+      not_reports: ["long explanation", "overcat"]
+      changed_lines: 1
+
+  - name: a commit by an account GitHub no longer knows falls back to the git author name
+    serve:
+      stellar SEPs commits:
+        text: '[{"html_url":"https://github.com/stellar/stellar-protocol/commit/c4","author":null,"commit":{"message":"SEP-62: add the proposal (#2100)","author":{"name":"Ada Lovelace"}}},{"html_url":"https://github.com/stellar/stellar-protocol/commit/c3","author":{"login":"leighmcculloch"},"commit":{"message":"SEP-13: change status from rejected to abandoned (#2062)","author":{"name":"Leigh"}}}]'
+    expect:
+      reports: ["+📝 Ada Lovelace: SEP-62: add the proposal (#2100) https://github.com/stellar/stellar-protocol/commit/c4"]
+      changed_lines: 1
+
+  - name: old commits only scroll out of the window, which is not news
+    serve:
+      stellar SEPs commits:
+        text: '[{"html_url":"https://github.com/stellar/stellar-protocol/commit/c4","author":null,"commit":{"message":"SEP-62: add the proposal (#2100)","author":{"name":"Ada Lovelace"}}}]'
+    expect:
+      silent: true

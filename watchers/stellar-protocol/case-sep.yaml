@@ -4,7 +4,7 @@
 #   6c3fb1290ccd04f30352ffe83319d67eb992eb40  parent
 #   b1933843d71eea2a5b537b5a1af6592c4bdc6afe  "SEP-53: Change Status to Final (#1963)"
 # Format: docs/WATCHERS.md ("Testing a watcher").
-only: [stellar SEP index statuses, stellar SEP-0053 preamble]
+only: [stellar SEP index, stellar SEP-0053 preamble]
 stages:
   - name: baseline is recorded silently
     serve:
@@ -35,8 +35,8 @@ stages:
       https://raw.githubusercontent.com/stellar/stellar-protocol/master/ecosystem/sep-0053.md: stellar/stellar-protocol@b1933843d71eea2a5b537b5a1af6592c4bdc6afe:ecosystem/sep-0053.md
     expect:
       reports:
-        - "-SEP-0053 | Final Comment Period (Final)"
-        - "+SEP-0053 | Final"
+        - "-SEP-0053 | Sign and Verify Messages | Final Comment Period (Final)"
+        - "+SEP-0053 | Sign and Verify Messages | Final"
         - "-Status: Final Comment Period (Final)"
         - "+Status: Final"
         - "+Version: 1.0.0"
