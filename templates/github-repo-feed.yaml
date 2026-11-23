@@ -7,7 +7,9 @@
 #
 # Every job is a window over "the newest N things" reshaped by jq into one line per item;
 # `additions_only` reports a line only when it first appears, so items scrolling out of the
-# window never alert. Needs GH_READ_TOKEN (any token that reads public repositories).
+# window never alert. Needs GH_READ_TOKEN (any token that reads public repositories; in GitHub
+# Actions the built-in GITHUB_TOKEN is enough). The discussion-comments query is kept small
+# on purpose: GraphQL cost is about requested nodes / 100, and that token gets 1000 points/hour.
 params:
   name:
     description: short label put in front of every watcher name, for example stellar
@@ -75,7 +77,7 @@ method: POST
 headers:
   Authorization: Bearer ${GH_READ_TOKEN}
   Content-Type: application/json
-data: '{"query": "{repository(owner:\"{{owner}}\",name:\"{{repo}}\"){discussions(first:15,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title comments(last:10){nodes{url bodyText author{login} replies(last:5){nodes{url bodyText author{login}}}}}}}}}"}'
+data: '{"query": "{repository(owner:\"{{owner}}\",name:\"{{repo}}\"){discussions(first:10,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title comments(last:8){nodes{url bodyText author{login} replies(last:3){nodes{url bodyText author{login}}}}}}}}}"}'
 additions_only: true
 filter:
   - jq_lines:

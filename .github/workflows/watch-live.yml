@@ -1,0 +1,62 @@
+name: watch live
+# Runs the `every: live` watchers in a loop inside one long job, polling once a minute.
+# A job serves for SERVE_FOR (default 50m), saves its snapshots, then starts the next run of
+# itself, so one is always running. The hourly cron only restarts the chain if it ever breaks.
+# To stop it: cancel the running job (a cancelled job does not chain) and disable this workflow.
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write # snapshots go to the tripwire-state branch
+  actions: write # to start the next run
+concurrency:
+  group: watch-live
+  cancel-in-progress: false # the next run waits for this one, so there is never an overlap
+env:
+  CADENCE: live
+  UV_NO_DEV: "1"
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv sync --frozen --no-dev
+      - name: restore snapshots from the tripwire-state branch
+        run: |
+          git fetch origin tripwire-state || true
+          if git rev-parse --verify -q origin/tripwire-state >/dev/null; then
+            git worktree add state origin/tripwire-state
+          else
+            git worktree add --orphan -b tripwire-state state
+          fi
+      - run: .venv/bin/python -m tripwire check watchers --every $CADENCE
+      - name: watch
+        id: serve
+        run: |
+          code=0
+          timeout "${{ vars.SERVE_FOR || '50m' }}" \
+            .venv/bin/python -m tripwire serve watchers --every $CADENCE --interval 60 || code=$?
+          [ "$code" -eq 124 ] && code=0 # ran for the whole time: that is the normal way to end
+          exit "$code"
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GH_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: save snapshots
+        if: always()
+        working-directory: state
+        run: |
+          git config user.name tripwire-bot
+          git config user.email tripwire-bot@users.noreply.github.com
+          git add -A
+          git diff --cached --quiet || git commit -qm "chore: update $CADENCE watch state"
+          git push origin HEAD:tripwire-state
+      - name: start the next run
+        if: steps.serve.outcome == 'success'
+        run: gh workflow run watch-live.yml --ref "${{ github.ref_name }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
