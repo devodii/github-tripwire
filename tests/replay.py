@@ -9,12 +9,14 @@ test database and reused, which keeps fixture files out of the repo.
 from __future__ import annotations
 
 import http.server
+import os
 import re
 import threading
 import time
 import urllib.request
 from pathlib import Path
 from typing import NamedTuple
+from unittest import mock
 
 import psycopg
 import yaml
@@ -63,12 +65,15 @@ class Expect(BaseModel):
 class Stage(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str
-    serve: dict[str, Serve] = Field(default_factory=dict, description="url -> content, sticky")
+    serve: dict[str, Serve] = Field(
+        default_factory=dict, description="job name or url -> content, sticky"
+    )
     expect: Expect
 
 
 class Case(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    env: dict[str, str] = Field(default_factory=dict, description="variables set during the case")
     stages: list[Stage] = Field(min_length=1)
 
 
@@ -169,42 +174,58 @@ def diff_lines(out: str) -> list[str]:
 def run_case(
     case_file: Path, tmp_path: Path, capfd, snapshots: Snapshots, requests: list | None = None
 ) -> list[Run]:
-    """Run every stage in order, asserting its expectations. Returns each stage's output."""
-    case = Case.model_validate(yaml.safe_load(case_file.read_text()))
-    text = (case_file.parent / "watcher.yaml").read_text()
+    """Run every stage in order, asserting its expectations. Returns each stage's output.
 
-    urls = list(dict.fromkeys(url for stage in case.stages for url in stage.serve))
-    local = {url: f"/r{i}" for i, url in enumerate(urls)}
+    Every job in watcher.yaml is pointed at the local server. A stage's `serve` key is a job
+    name or a url (a url shared by several jobs serves all of them).
+    """
+    case = Case.model_validate(yaml.safe_load(case_file.read_text()))
+    jobs = [d for d in yaml.safe_load_all((case_file.parent / "watcher.yaml").read_text()) if d]
+    local = [f"/r{i}" for i in range(len(jobs))]
+    identities = [(job.get("name"), job.get("url")) for job in jobs]  # before urls are rewritten
+
+    def targets(key: str) -> list[int]:
+        found = [i for i, names in enumerate(identities) if key in names]
+        assert found, f"serve key {key!r} matches no job name or url in watcher.yaml"
+        return found
+
+    for stage in case.stages:
+        for key in stage.serve:
+            targets(key)
+
     upstream = Upstream(requests)
     outputs, last_run = [], 0.0
     try:
-        for url in sorted(urls, key=len, reverse=True):  # longest first, so prefixes are safe
-            text = text.replace(url, upstream.base + local[url])
+        for i, job in enumerate(jobs):
+            job["url"] = upstream.base + local[i]
         watchers = tmp_path / "watchers"
         watchers.mkdir()
-        (watchers / "watcher.yaml").write_text(text)
+        (watchers / "watcher.yaml").write_text(yaml.safe_dump_all(jobs, sort_keys=False))
 
-        for stage in case.stages:
-            for url, serve in stage.serve.items():
-                upstream.files[local[url]] = snapshots.resolve(serve)
-            # urlwatch picks the latest snapshot by whole-second timestamp, so space runs apart
-            time.sleep(max(0.0, last_run + 1.1 - time.monotonic()))
-            last_run = time.monotonic()
-            capfd.readouterr()
-            code = main(["run", str(watchers), "--cache", str(tmp_path / "cache.db")])
-            out, err = capfd.readouterr()
-            outputs.append(Run(out, err))
-            where, expect = f"stage '{stage.name}'", stage.expect
+        with mock.patch.dict(os.environ, case.env):
+            for stage in case.stages:
+                for key, serve in stage.serve.items():
+                    content = snapshots.resolve(serve)
+                    for i in targets(key):
+                        upstream.files[local[i]] = content
+                # urlwatch picks the latest snapshot by whole-second timestamp, so space runs apart
+                time.sleep(max(0.0, last_run + 1.1 - time.monotonic()))
+                last_run = time.monotonic()
+                capfd.readouterr()
+                code = main(["run", str(watchers), "--cache", str(tmp_path / "cache.db")])
+                out, err = capfd.readouterr()
+                outputs.append(Run(out, err))
+                where, expect = f"stage '{stage.name}'", stage.expect
 
-            assert code == 0, where
-            if expect.silent:
-                assert out.strip() == "", f"{where} should be silent but reported:\n{out}"
-            for needle in expect.reports:
-                assert needle in out, f"{where} should report {needle!r}:\n{out}"
-            for needle in expect.not_reports:
-                assert needle not in out, f"{where} should not report {needle!r}"
-            if expect.changed_lines is not None:
-                assert len(diff_lines(out)) == expect.changed_lines, f"{where}:\n{out}"
+                assert code == 0, where
+                if expect.silent:
+                    assert out.strip() == "", f"{where} should be silent but reported:\n{out}"
+                for needle in expect.reports:
+                    assert needle in out, f"{where} should report {needle!r}:\n{out}"
+                for needle in expect.not_reports:
+                    assert needle not in out, f"{where} should not report {needle!r}:\n{out}"
+                if expect.changed_lines is not None:
+                    assert len(diff_lines(out)) == expect.changed_lines, f"{where}:\n{out}"
     finally:
         upstream.server.shutdown()
     return outputs
