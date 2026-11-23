@@ -73,6 +73,9 @@ class Stage(BaseModel):
 
 class Case(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    only: list[str] = Field(
+        default_factory=list, description="run just these watchers (default: all in watcher.yaml)"
+    )
     env: dict[str, str] = Field(default_factory=dict, description="variables set during the case")
     stages: list[Stage] = Field(min_length=1)
 
@@ -181,6 +184,10 @@ def run_case(
     """
     case = Case.model_validate(yaml.safe_load(case_file.read_text()))
     jobs = [d for d in yaml.safe_load_all((case_file.parent / "watcher.yaml").read_text()) if d]
+    if case.only:
+        missing = set(case.only) - {job["name"] for job in jobs}
+        assert not missing, f"'only' names watchers that do not exist: {sorted(missing)}"
+        jobs = [job for job in jobs if job["name"] in case.only]
     local = [f"/r{i}" for i in range(len(jobs))]
     identities = [(job.get("name"), job.get("url")) for job in jobs]  # before urls are rewritten
 
