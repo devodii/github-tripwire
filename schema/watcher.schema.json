@@ -82,6 +82,19 @@
       "default": null,
       "description": "request body for POST",
       "title": "Data"
+    },
+    "additions_only": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "report only lines that appear, so items aging out of a feed never alert",
+      "title": "Additions Only"
     }
   },
   "required": [

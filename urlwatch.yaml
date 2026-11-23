@@ -3,6 +3,7 @@ display:
   new: false        # first sighting only records the baseline, nobody gets pinged
   error: true       # a watcher that breaks (404, format changed) is reported
   unchanged: false
+  empty-diff: false # a change with nothing left to show (see additions_only) sends nothing
 
 report:
   stdout:

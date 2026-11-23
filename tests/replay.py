@@ -121,18 +121,34 @@ class Snapshots:
 
 
 class Upstream:
-    """A local stand-in for the watched URLs."""
+    """A local stand-in for the watched URLs. Every request it receives is kept in `requests`."""
 
-    def __init__(self):
+    def __init__(self, requests: list | None = None):
         self.files: dict[str, str] = {}
-        files = self.files
+        self.requests: list[dict] = requests if requests is not None else []
+        files, seen = self.files, self.requests
 
         class Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):
+            def respond(self, request_body: str = ""):
+                seen.append(
+                    {
+                        "method": self.command,
+                        "path": self.path,
+                        "headers": {k.lower(): v for k, v in self.headers.items()},
+                        "body": request_body,
+                    }
+                )
                 body = files.get(self.path)
                 self.send_response(200 if body is not None else 404)
                 self.end_headers()
                 self.wfile.write((body or "Not Found").encode())
+
+            def do_GET(self):
+                self.respond()
+
+            def do_POST(self):
+                length = int(self.headers.get("content-length") or 0)
+                self.respond(self.rfile.read(length).decode())
 
             def log_message(self, *args):
                 pass
@@ -150,14 +166,16 @@ def diff_lines(out: str) -> list[str]:
     ]
 
 
-def run_case(case_file: Path, tmp_path: Path, capfd, snapshots: Snapshots) -> list[Run]:
+def run_case(
+    case_file: Path, tmp_path: Path, capfd, snapshots: Snapshots, requests: list | None = None
+) -> list[Run]:
     """Run every stage in order, asserting its expectations. Returns each stage's output."""
     case = Case.model_validate(yaml.safe_load(case_file.read_text()))
     text = (case_file.parent / "watcher.yaml").read_text()
 
     urls = list(dict.fromkeys(url for stage in case.stages for url in stage.serve))
     local = {url: f"/r{i}" for i, url in enumerate(urls)}
-    upstream = Upstream()
+    upstream = Upstream(requests)
     outputs, last_run = [], 0.0
     try:
         for url in sorted(urls, key=len, reverse=True):  # longest first, so prefixes are safe

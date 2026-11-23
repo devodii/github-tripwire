@@ -7,6 +7,9 @@ job. Every document is parsed into ``Watcher``; see docs/WATCHERS.md for the pro
 
 from __future__ import annotations
 
+import os
+import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 
@@ -37,6 +40,10 @@ class Watcher(BaseModel):
     method: Literal["GET", "POST"] | None = None
     headers: dict[str, str] | None = Field(default=None, description="request headers")
     data: str | None = Field(default=None, description="request body for POST")
+    additions_only: bool | None = Field(
+        default=None,
+        description="report only lines that appear, so items aging out of a feed never alert",
+    )
 
     @field_validator("filter")
     @classmethod
@@ -89,3 +96,39 @@ def load_watchers(path: Path) -> list[Watcher]:
 def select(watchers: list[Watcher], every: str | None) -> list[Watcher]:
     """The watchers of one cadence, or all of them when ``every`` is None."""
     return [w for w in watchers if every is None or w.every == every]
+
+
+_VAR = re.compile(r"\$\{(\w+)\}")
+
+
+def expand_secrets(watchers: list[Watcher], env: Mapping[str, str] = os.environ) -> list[Watcher]:
+    """Fill ``${NAME}`` in header values and the request body from the environment.
+
+    This keeps tokens out of watcher files. A variable that is unset or empty is an error
+    naming the watcher, because a request sent without its credentials would only fail later
+    with a confusing 401.
+    """
+    expanded, problems = [], []
+    for watcher in watchers:
+        missing: list[str] = []
+
+        def fill(text: str, missing: list[str] = missing) -> str:
+            def sub(match: re.Match[str]) -> str:
+                value = env.get(match.group(1), "")
+                if not value:
+                    missing.append(match.group(1))
+                return value
+
+            return _VAR.sub(sub, text)
+
+        update: dict[str, Any] = {}
+        if watcher.headers:
+            update["headers"] = {k: fill(v) for k, v in watcher.headers.items()}
+        if watcher.data:
+            update["data"] = fill(watcher.data)
+        if missing:
+            problems.append(f"watcher '{watcher.name}' needs {', '.join(sorted(set(missing)))}")
+        expanded.append(watcher.model_copy(update=update))
+    if problems:
+        raise SpecError(problems)
+    return expanded
