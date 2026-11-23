@@ -23,6 +23,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from tripwire.cli import main
+from tripwire.spec import load_watchers
 
 GITHUB_REF = re.compile(r"(?P<repo>[\w.-]+/[\w.-]+)@(?P<sha>[0-9a-f]{40}):(?P<path>.+)")
 
@@ -183,7 +184,12 @@ def run_case(
     name or a url (a url shared by several jobs serves all of them).
     """
     case = Case.model_validate(yaml.safe_load(case_file.read_text()))
-    jobs = [d for d in yaml.safe_load_all((case_file.parent / "watcher.yaml").read_text()) if d]
+    # load through the engine so `uses:` templates expand exactly as they do in production
+    watchers_in_file = load_watchers(case_file.parent / "watcher.yaml")
+    jobs = [
+        w.model_dump(mode="json", exclude_defaults=True, exclude_none=True)
+        for w in watchers_in_file
+    ]
     if case.only:
         missing = set(case.only) - {job["name"] for job in jobs}
         assert not missing, f"'only' names watchers that do not exist: {sorted(missing)}"
