@@ -6,6 +6,10 @@ display:
   empty-diff: false # a change with nothing left to show (see additions_only) sends nothing
 
 report:
+  text:  # shared by stdout and telegram: compact, one message per changed watcher
+    line_length: 0  # no ==== or ---- rules
+    footer: false   # no urlwatch signature
+    separate: true
   stdout:
     enabled: true
   telegram:
