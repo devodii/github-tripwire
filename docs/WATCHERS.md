@@ -95,7 +95,9 @@ with: {name: rust, owner: rust-lang, repo: rust}
 ```
 
 `github-repo-feed` gives you five watchers for any repo (issues and PRs, comments, review
-comments, discussions, discussion comments). To make a template, write a file in `templates/`:
+comments, discussions, discussion comments). `github-path-commits` follows every merged commit
+that touches a folder or file (`path:`), which is how you see every edit to a set of proposals,
+including the ones that never reach an index table. To make a template, write a file in `templates/`:
 the first document lists the parameters (with a `default:` to make one optional), the rest are
 ordinary watchers that use `{{name}}` wherever a parameter goes.
 

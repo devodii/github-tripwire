@@ -45,7 +45,8 @@ To add a hook: put one file in `tripwire/hooks/`. See `docs/WATCHERS.md`.
 
 ## Templates
 
-`templates/github-repo-feed.yaml` is five watchers written once: new issues and PRs, comments,
+`templates/` holds watchers written once. `github-path-commits` follows every merged commit that
+touches a folder (for example all SEPs). `github-repo-feed` is five watchers: new issues and PRs, comments,
 review comments, discussions, discussion comments. To watch any repo, you write this:
 
 ```yaml
