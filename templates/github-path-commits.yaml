@@ -1,0 +1,34 @@
+# Every merged commit that touches a path in a GitHub repository, one line per commit:
+# who, the first line of the commit message, and a link. Use it to follow a folder of
+# proposals, docs or specs (every edit shows up, not just the ones that reach an index).
+#
+# Use it from a watcher.yaml:
+#   uses: github-path-commits
+#   with: {name: stellar SEPs, owner: stellar, repo: stellar-protocol, path: ecosystem}
+#
+# A window over the newest 30 commits; `additions_only` means only new commits alert.
+# Needs GH_READ_TOKEN (in GitHub Actions the built-in GITHUB_TOKEN is enough).
+params:
+  name:
+    description: short label put in front of the watcher name, for example stellar SEPs
+  owner:
+    description: GitHub owner or organisation, for example stellar
+  repo:
+    description: repository name, for example stellar-protocol
+  path:
+    description: folder or file to follow, for example ecosystem
+  every:
+    description: cadence this watcher runs on
+    default: live
+---
+name: "{{name}} commits"
+every: "{{every}}"
+url: "https://api.github.com/repos/{{owner}}/{{repo}}/commits?path={{path}}&per_page=30"
+headers:
+  Authorization: Bearer ${GH_READ_TOKEN}
+  Accept: application/vnd.github+json
+  X-GitHub-Api-Version: "2022-11-28"
+additions_only: true
+filter:
+  - jq_lines:
+      query: '.[] | "📝 \(.author.login // .commit.author.name): \(.commit.message | split("\n")[0] | .[:160]) \(.html_url)"'
