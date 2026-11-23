@@ -1,4 +1,4 @@
-"""The telegram reporter mutes repeats of the same watcher's error, never real changes."""
+"""The telegram reporter: compact messages, and repeats of one watcher's error are muted."""
 
 import datetime
 
@@ -22,14 +22,19 @@ class Job:
         return f"http://example.invalid/{self.name}"
 
 
+TRACEBACK = (
+    'Traceback (most recent call last):\n  File "x.py", line 1, in <module>\nValueError: boom\n'
+)
+
+
 class State:
-    def __init__(self, verb, job):
-        self.verb, self.job = verb, job
+    def __init__(self, verb, job, diff="+a new line"):
+        self.verb, self.job, self.diff = verb, job, diff
         self.old_data, self.new_data = "old", "new"
-        self.traceback = "Traceback: boom"
+        self.traceback = TRACEBACK
 
     def get_diff(self):
-        return "+a new line"
+        return self.diff
 
 
 class Report:
@@ -71,7 +76,7 @@ def test_it_replaces_urlwatchs_own_telegram_reporter():
 
 def test_the_same_error_is_sent_once_not_on_every_pass(telegram):
     job = Job("feed")
-    assert "ERROR: feed" in telegram([State("error", job)])[0]
+    assert telegram([State("error", job)]) == ["⚠️ feed failed\nValueError: boom"]
     assert telegram([State("error", job)]) == []
     assert telegram([State("error", job)]) == []
 
@@ -87,7 +92,7 @@ def test_real_changes_are_never_muted(telegram):
     telegram([State("error", job)])
     for _ in range(3):
         (message,) = telegram([State("changed", job)])
-        assert "+a new line" in message
+        assert message == "feed\na new line"
 
 
 def test_recovering_resets_the_clock_so_the_next_outage_alerts_straight_away(telegram):
@@ -122,3 +127,36 @@ def test_an_unwritable_state_file_never_loses_an_alert(telegram, monkeypatch, tm
     blocker.write_text("a file where the state directory should be")
     monkeypatch.setenv("TRIPWIRE_STATE_DIR", str(blocker))
     assert telegram([State("error", Job("feed"))])
+
+
+MIXED = (
+    "--- @\tMon, 23 Nov 2026 10:00:00 +0000\n+++ @\tMon, 23 Nov 2026 10:01:00 +0000\n"
+    "@@ -1,3 +1,3 @@\n SEP-0001 | Active\n-SEP-0002 | Draft\n+SEP-0002 | Final\n SEP-0003 | Draft"
+)
+
+
+def test_new_items_are_the_watcher_name_then_one_plain_line_each(telegram):
+    diff = "+💬 ada on #1: hi https://github.com/o/r/issues/1#issuecomment-5\n+🆕 issue #2 [open] x"
+    assert telegram([State("changed", Job("feed"), diff)]) == [
+        "feed\n💬 ada on #1: hi https://github.com/o/r/issues/1#issuecomment-5\n🆕 issue #2 [open] x"
+    ]
+
+
+def test_a_before_and_after_change_keeps_both_markers_and_drops_the_noise(telegram):
+    (message,) = telegram([State("changed", Job("SEP index"), MIXED)])
+    assert message == "SEP index\n-SEP-0002 | Draft\n+SEP-0002 | Final"
+
+
+def test_the_message_never_carries_the_api_url_or_urlwatchs_footer(telegram):
+    (message,) = telegram([State("changed", Job("feed"), MIXED)])
+    for noise in ("example.invalid", "urlwatch", "CHANGED", "01.", "@@", "---", "+++"):
+        assert noise not in message
+
+
+def test_several_watchers_in_one_pass_are_separated_by_a_blank_line(telegram):
+    states = [State("changed", Job("a"), "+one"), State("changed", Job("b"), "+two")]
+    assert telegram(states) == ["a\none\n\nb\ntwo"]
+
+
+def test_a_change_with_nothing_to_show_sends_nothing(telegram):
+    assert telegram([State("changed", Job("feed"), "--- @ x\n+++ @ y\n")]) == []
