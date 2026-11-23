@@ -72,9 +72,16 @@ def render_config(source: Path, out: Path) -> None:
     out.write_text(yaml.safe_dump(config, sort_keys=False))
 
 
+# Start urlwatch with the interpreter the engine is already running in, not the `urlwatch`
+# command: that only exists on PATH inside `uv run` or an activated venv, so it would fail
+# under .venv/bin/python, a Docker CMD or a service manager.
+URLWATCH_MAIN = "from urlwatch.cli import main; raise SystemExit(main())"
+
+
 def urlwatch(urls: Path, cache: Path, config: Path, *args: str) -> int:
     cache.parent.mkdir(parents=True, exist_ok=True)
-    cmd = ["urlwatch", "--urls", str(urls), "--config", str(config), "--cache", str(cache)]
+    cmd = [sys.executable, "-c", URLWATCH_MAIN]
+    cmd += ["--urls", str(urls), "--config", str(config), "--cache", str(cache)]
     cmd += ["--hooks", str(ROOT / "hooks.py"), *args]
     return subprocess.run(cmd, check=False).returncode
 

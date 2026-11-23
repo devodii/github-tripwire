@@ -62,3 +62,9 @@ def test_every_is_required(tmp_path):
     bad.write_text("name: a\nurl: http://a\n")
     with pytest.raises(SpecError, match="every: Field required"):
         load_watchers(bad)
+
+
+def test_the_engine_does_not_need_the_venv_on_path(monkeypatch):
+    # a service, a Docker CMD or `.venv/bin/python -m tripwire` has no `urlwatch` command on PATH
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    assert main(["check", str(ROOT / "watchers")]) == 0
