@@ -75,6 +75,7 @@ def test_template_jobs_mix_with_plain_jobs_in_one_file(tmp_path, templates):
         ("uses: greet\n", r"needs \['who'\] under 'with:'"),
         ("uses: greet\nwith: {who: ada, color: red}\n", r"no parameter \['color'\]"),
         ("uses: greet\nwith: {who: 'a\"b'}\n", "may only contain"),
+        ("uses: greet\nwith: {who: 'a\\b'}\n", "may only contain"),
         ("uses: greet\nextra: 1\n", "extra: Extra inputs"),
         ("uses: greet\nwith: {who: ada}\n---\nuses: greet\nwith: {who: ada}\n", "duplicate name"),
     ],
@@ -110,3 +111,8 @@ def test_every_committed_template_expands_with_placeholder_values():
         values = {k: "example" for k, p in header.params.items() if p.default is None}
         jobs = expand_use(Use(uses=file.stem, **{"with": values}))
         assert jobs, f"{file.name} has no jobs"
+
+
+def test_a_path_with_slashes_is_a_valid_parameter(tmp_path, templates):
+    (w,) = load(tmp_path, templates, "uses: greet\nwith: {who: core/cap}\n")
+    assert str(w.url) == "http://example.invalid/core/cap"

@@ -87,7 +87,7 @@ class TemplateHeader(BaseModel):
 
 
 _PLACEHOLDER = re.compile(r"\{\{\s*(\w+)\s*\}\}")
-_PARAM_VALUE = re.compile(r"[\w. -]+")
+_PARAM_VALUE = re.compile(r"[\w. /-]+")
 
 
 def expand_use(use: Use, templates_dir: Path = TEMPLATES_DIR) -> list[dict[str, Any]]:
@@ -109,7 +109,7 @@ def expand_use(use: Use, templates_dir: Path = TEMPLATES_DIR) -> list[dict[str, 
     for key, value in values.items():
         if not _PARAM_VALUE.fullmatch(value):
             raise ValueError(
-                f"parameter '{key}' may only contain letters, digits, . _ - and spaces"
+                f"parameter '{key}' may only contain letters, digits, . _ - / and spaces"
             )
 
     def fill(node: Any) -> Any:
