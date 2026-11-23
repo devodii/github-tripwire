@@ -28,7 +28,8 @@ def test_telegram_stays_off_with_only_one_secret(tmp_path, monkeypatch):
 
 def test_telegram_turns_on_and_expands_when_both_secrets_exist(tmp_path, monkeypatch):
     cfg = render(tmp_path, monkeypatch, TG_TOKEN="123:abc", TG_CHAT="-42")
-    assert cfg == {"enabled": True, "bot_token": "123:abc", "chat_id": "-42"}
+    assert (cfg["enabled"], cfg["bot_token"], cfg["chat_id"]) == (True, "123:abc", "-42")
+    assert cfg["error_every"] == 60  # the shipped default, adjustable in urlwatch.yaml
 
 
 def test_postgres_reporter_is_off_without_a_database_url(tmp_path, monkeypatch):
