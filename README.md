@@ -53,15 +53,19 @@ uses: github-repo-feed
 with: {name: rust, owner: rust-lang, repo: rust}
 ```
 
-## Two ways to run
+## Two speeds, both on GitHub Actions
 
-- **On a schedule (GitHub Actions).** Watchers with `every: frequent` run every 30 minutes in
-  `.github/workflows/watch-frequent.yml`. Good for things that change rarely, like a status.
-  GitHub can delay cron runs, so don't expect it to be instant.
-- **Live (a process that stays on).** Watchers with `every: live` run in a loop, once a minute:
-  `uv run python -m tripwire serve watchers --every live`. This needs a machine that stays
-  on (your laptop, or a small server). You can't get real-time webhooks for repos you don't
-  own, so polling every minute is as fast as it gets.
+- **Every 30 minutes** (`watch-frequent.yml`): watchers with `every: frequent`. Good for things
+  that change rarely, like a status. GitHub can delay cron runs, so it's not instant.
+- **Live, about a minute** (`watch-live.yml`): watchers with `every: live`. One job polls once a
+  minute for 50 minutes, saves what it saw, and starts the next run of itself, so one is always
+  running. It uses GitHub's built-in token, so there's no token of yours to manage. You can't get
+  real-time webhooks for repos you don't own, so polling is as fast as it gets.
+
+To stop the live feed: cancel the running job and disable the workflow. To run it on your own
+machine instead: `uv run python -m tripwire serve watchers --every live` (needs `GH_READ_TOKEN`).
+
+If a watcher keeps failing, you get one error message an hour for it, not one a minute.
 
 ## Setup
 
@@ -79,7 +83,7 @@ Secrets, in `.env` locally and in GitHub repo secrets for Actions:
 | --- | --- |
 | `TG_TOKEN` | Telegram bot token (from @BotFather). |
 | `TG_CHAT` | Your Telegram chat id. Send the bot `/start`, then it shows up in the bot's updates. |
-| `GH_READ_TOKEN` | A GitHub token that can read public repos. Needed by the live feed. |
+| `GH_READ_TOKEN` | Only when running the live feed on your own machine. In GitHub Actions the built-in token is used. |
 | `DATABASE_URL` | Optional. Postgres where every alert is saved, so you can query the history. |
 
 ## Where data is kept

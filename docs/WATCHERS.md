@@ -101,16 +101,26 @@ ordinary watchers that use `{{name}}` wherever a parameter goes.
 
 ## Running live
 
-`every:` names a schedule. Watchers with `every: frequent` run from a cron in GitHub Actions.
-For alerts within a minute, run the `live` ones in a loop on a machine that stays on:
+`every:` names a schedule. Watchers with `every: frequent` run from a cron in GitHub Actions
+(`watch-frequent.yml`). Watchers with `every: live` run in a loop, once a minute, in
+`watch-live.yml`: one job serves for 50 minutes (`SERVE_FOR`, a repository variable), saves its
+snapshots to the `tripwire-state` branch, then starts the next run of itself. An hourly cron
+restarts the chain if it ever breaks.
+
+To run the same loop on your own machine:
 
 ```sh
 uv run python -m tripwire serve watchers --every live            # one pass a minute
 uv run python -m tripwire serve watchers --every live --interval 30
 ```
 
-It needs `GH_READ_TOKEN`. Webhooks (instant) are not possible for repos you don't own, so
-polling is as fast as it gets. Unchanged responses cost nothing against GitHub's rate limit.
+Locally it needs `GH_READ_TOKEN`; in Actions the built-in `GITHUB_TOKEN` is passed as
+`GH_READ_TOKEN`. Webhooks (instant) are not possible for repos you don't own, so polling is as
+fast as it gets, and unchanged responses cost nothing against GitHub's rate limit.
+
+A watcher that keeps failing is reported to Telegram once per hour, not on every pass
+(`report.telegram.error_every` in `urlwatch.yaml`, in minutes, `0` for always). Changes are
+never muted.
 
 ## Adding a hook
 
