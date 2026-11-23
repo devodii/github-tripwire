@@ -1,107 +1,144 @@
 {
-  "additionalProperties": false,
-  "description": "One watched resource: fetch ``url``, run ``filter`` over it, alert when the result changes.",
-  "properties": {
-    "name": {
-      "description": "unique, shown in alerts",
-      "minLength": 1,
-      "title": "Name",
-      "type": "string"
-    },
-    "every": {
-      "description": "cadence name, a workflow runs the watchers of one cadence",
-      "minLength": 1,
-      "title": "Every",
-      "type": "string"
-    },
-    "url": {
-      "description": "what to fetch",
-      "format": "uri",
-      "maxLength": 2083,
-      "minLength": 1,
-      "title": "Url",
-      "type": "string"
-    },
-    "filter": {
-      "description": "steps applied in order: a hook or urlwatch filter name, or {name: options}",
-      "items": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "additionalProperties": true,
-            "type": "object"
-          }
-        ]
-      },
-      "title": "Filter",
-      "type": "array"
-    },
-    "method": {
-      "anyOf": [
-        {
-          "enum": [
-            "GET",
-            "POST"
-          ],
+  "$defs": {
+    "Use": {
+      "additionalProperties": false,
+      "description": "Stamp out the watchers of a template: ``uses: github-repo-feed`` plus ``with:`` values.",
+      "properties": {
+        "uses": {
+          "description": "template name: a file in templates/, no .yaml",
+          "minLength": 1,
+          "title": "Uses",
           "type": "string"
         },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Method"
-    },
-    "headers": {
-      "anyOf": [
-        {
+        "with": {
           "additionalProperties": {
             "type": "string"
           },
+          "description": "the template's parameters",
+          "title": "With",
           "type": "object"
-        },
-        {
-          "type": "null"
         }
+      },
+      "required": [
+        "uses"
       ],
-      "default": null,
-      "description": "request headers",
-      "title": "Headers"
+      "title": "Use",
+      "type": "object"
     },
-    "data": {
-      "anyOf": [
-        {
+    "Watcher": {
+      "additionalProperties": false,
+      "description": "One watched resource: fetch ``url``, run ``filter`` over it, alert when the result changes.",
+      "properties": {
+        "name": {
+          "description": "unique, shown in alerts",
+          "minLength": 1,
+          "title": "Name",
           "type": "string"
         },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "request body for POST",
-      "title": "Data"
-    },
-    "additions_only": {
-      "anyOf": [
-        {
-          "type": "boolean"
+        "every": {
+          "description": "cadence name, a workflow runs the watchers of one cadence",
+          "minLength": 1,
+          "title": "Every",
+          "type": "string"
         },
-        {
-          "type": "null"
+        "url": {
+          "description": "what to fetch",
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "filter": {
+          "description": "steps applied in order: a hook or urlwatch filter name, or {name: options}",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            ]
+          },
+          "title": "Filter",
+          "type": "array"
+        },
+        "method": {
+          "anyOf": [
+            {
+              "enum": [
+                "GET",
+                "POST"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Method"
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "request headers",
+          "title": "Headers"
+        },
+        "data": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "request body for POST",
+          "title": "Data"
+        },
+        "additions_only": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "report only lines that appear, so items aging out of a feed never alert",
+          "title": "Additions Only"
         }
+      },
+      "required": [
+        "name",
+        "every",
+        "url"
       ],
-      "default": null,
-      "description": "report only lines that appear, so items aging out of a feed never alert",
-      "title": "Additions Only"
+      "title": "Watcher",
+      "type": "object"
     }
   },
-  "required": [
-    "name",
-    "every",
-    "url"
-  ],
-  "title": "Watcher",
-  "type": "object"
+  "anyOf": [
+    {
+      "$ref": "#/$defs/Watcher"
+    },
+    {
+      "$ref": "#/$defs/Use"
+    }
+  ]
 }

@@ -1,0 +1,82 @@
+# Live activity feed for one GitHub repository: issues and pull requests, issue and PR
+# comments, PR review comments, discussions and discussion comments. One alert line per item.
+#
+# Use it from a watcher.yaml:
+#   uses: github-repo-feed
+#   with: {name: stellar, owner: stellar, repo: stellar-protocol}
+#
+# Every job is a window over "the newest N things" reshaped by jq into one line per item;
+# `additions_only` reports a line only when it first appears, so items scrolling out of the
+# window never alert. Needs GH_READ_TOKEN (any token that reads public repositories).
+params:
+  name:
+    description: short label put in front of every watcher name, for example stellar
+  owner:
+    description: GitHub owner or organisation, for example stellar
+  repo:
+    description: repository name, for example stellar-protocol
+  every:
+    description: cadence these watchers run on
+    default: live
+---
+name: "{{name}} issues and pull requests"
+every: "{{every}}"
+url: "https://api.github.com/repos/{{owner}}/{{repo}}/issues?state=all&sort=updated&direction=desc&per_page=30"
+headers:
+  Authorization: Bearer ${GH_READ_TOKEN}
+  Accept: application/vnd.github+json
+  X-GitHub-Api-Version: "2022-11-28"
+additions_only: true
+filter:
+  - jq_lines:
+      query: '.[] | (if .pull_request then "PR" else "issue" end) as $kind | (if .pull_request.merged_at then "merged" else .state end) as $state | "\(if .pull_request then "🔀" else "🆕" end) \($kind) #\(.number) [\($state)] \(.title) by \(.user.login) \(.html_url)"'
+---
+name: "{{name}} issue and pull request comments"
+every: "{{every}}"
+url: "https://api.github.com/repos/{{owner}}/{{repo}}/issues/comments?sort=created&direction=desc&per_page=30"
+headers:
+  Authorization: Bearer ${GH_READ_TOKEN}
+  Accept: application/vnd.github+json
+  X-GitHub-Api-Version: "2022-11-28"
+additions_only: true
+filter:
+  - jq_lines:
+      query: '.[] | "💬 \(.user.login) on #\(.issue_url | split("/") | last): \(.body | gsub("\\s+"; " ") | .[:240]) \(.html_url)"'
+---
+name: "{{name}} pull request review comments"
+every: "{{every}}"
+url: "https://api.github.com/repos/{{owner}}/{{repo}}/pulls/comments?sort=created&direction=desc&per_page=30"
+headers:
+  Authorization: Bearer ${GH_READ_TOKEN}
+  Accept: application/vnd.github+json
+  X-GitHub-Api-Version: "2022-11-28"
+additions_only: true
+filter:
+  - jq_lines:
+      query: '.[] | "🔎 \(.user.login) reviewed #\(.pull_request_url | split("/") | last) in \(.path): \(.body | gsub("\\s+"; " ") | .[:240]) \(.html_url)"'
+---
+name: "{{name}} discussions"
+every: "{{every}}"
+url: https://api.github.com/graphql
+method: POST
+headers:
+  Authorization: Bearer ${GH_READ_TOKEN}
+  Content-Type: application/json
+data: '{"query": "{repository(owner:\"{{owner}}\",name:\"{{repo}}\"){discussions(first:30,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title category{name} author{login}}}}}"}'
+additions_only: true
+filter:
+  - jq_lines:
+      query: '.data.repository.discussions.nodes[] | "🗣 discussion #\(.number) [\(.category.name)] \(.title) by \(.author.login // "ghost") https://github.com/{{owner}}/{{repo}}/discussions/\(.number)"'
+---
+name: "{{name}} discussion comments"
+every: "{{every}}"
+url: https://api.github.com/graphql
+method: POST
+headers:
+  Authorization: Bearer ${GH_READ_TOKEN}
+  Content-Type: application/json
+data: '{"query": "{repository(owner:\"{{owner}}\",name:\"{{repo}}\"){discussions(first:15,orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number title comments(last:10){nodes{url bodyText author{login} replies(last:5){nodes{url bodyText author{login}}}}}}}}}"}'
+additions_only: true
+filter:
+  - jq_lines:
+      query: '.data.repository.discussions.nodes[] | . as $d | .comments.nodes[] | (., .replies.nodes[]) | "💬 \(.author.login // "ghost") in discussion #\($d.number) (\($d.title[:50])): \(.bodyText | gsub("\\s+"; " ") | .[:240]) \(.url)"'

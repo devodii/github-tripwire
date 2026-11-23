@@ -25,10 +25,11 @@ from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
+from pydantic import TypeAdapter
 
 from tripwire import load_all
 from tripwire.registry import HOOKS
-from tripwire.spec import SpecError, Watcher, expand_secrets, load_watchers, select
+from tripwire.spec import SpecError, Use, Watcher, expand_secrets, load_watchers, select
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -123,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv(ROOT / ".env")  # real environment variables win over the file
 
     if args.command == "schema":
-        print(json.dumps(Watcher.model_json_schema(), indent=2))
+        print(json.dumps(TypeAdapter(Watcher | Use).json_schema(), indent=2))
         return 0
     if args.command == "hooks":
         load_all()
