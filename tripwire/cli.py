@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -43,6 +44,11 @@ def urlwatch_job(watcher: Watcher) -> dict:
     )
     if watcher.additions_only:
         job["diff_filter"] = ADDITIONS_ONLY
+    # urlwatch wants a unique url per job, but several watchers can share an endpoint (one
+    # GraphQL url, many queries). A fragment from the name makes each unique and is never sent.
+    # (Not user_visible_url: urlwatch derives a job's identity from it, which would collide.)
+    slug = re.sub(r"[^a-z0-9]+", "-", watcher.name.lower()).strip("-")
+    job["url"] = f"{job['url']}#{slug}"
     return job
 
 
