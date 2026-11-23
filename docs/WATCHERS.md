@@ -28,8 +28,13 @@ gives editors autocomplete.
 | `method`  | no       | `GET` (default) or `POST`                                                  |
 | `headers` | no       | request headers, e.g. an `Authorization` token for private repos           |
 | `data`    | no       | request body for `POST`                                                    |
+| `additions_only` | no | report only lines that newly appear (for feeds that show the latest N items) |
 
 Unknown fields and unknown options are errors, so typos fail in `check`, not silently in prod.
+
+`${NAME}` inside `headers` and `data` is filled from the environment when the watcher runs, so
+tokens never sit in a file (`Authorization: Bearer ${GH_READ_TOKEN}`). A missing one stops the
+run with a message naming the watcher. `check` does not need them.
 
 ## Filters
 
@@ -53,6 +58,18 @@ filter:
 Output is one sorted `key | value` line per row, from every table that has those headers.
 Rows can move between tables or be reordered and columns can be re-padded without an alert.
 
+### `jq_lines`: JSON as readable lines
+
+```yaml
+filter:
+  - jq_lines:
+      query: '.[] | "\(.user.login): \(.body[:80]) \(.html_url)"'
+```
+
+Runs a [jq](https://jqlang.github.io/jq/) program over a JSON response and prints each result on
+its own line, strings as plain text. Use it for API responses. (urlwatch's own `jq` filter quotes
+and escapes everything, which looks bad in an alert.)
+
 ### `kv_block`: `Key: value` fields
 
 ```yaml
@@ -62,6 +79,38 @@ filter:
       scope: fenced           # `fenced` = inside ``` blocks, `document` = whole file (default)
       anchor: Release         # a key the block must contain, to pick the right block
 ```
+
+## Feeds and templates
+
+An API feed such as "the newest 30 comments" is a window: new items push old ones out. Use
+`additions_only: true` so an item leaving the window never alerts, only a new one does, and
+reshape each item into one line with `jq_lines` so the alert reads well.
+
+A template is a set of watchers written once with `{{parameters}}`, kept in `templates/`. A
+watcher file uses it like this:
+
+```yaml
+uses: github-repo-feed
+with: {name: rust, owner: rust-lang, repo: rust}
+```
+
+`github-repo-feed` gives you five watchers for any repo (issues and PRs, comments, review
+comments, discussions, discussion comments). To make a template, write a file in `templates/`:
+the first document lists the parameters (with a `default:` to make one optional), the rest are
+ordinary watchers that use `{{name}}` wherever a parameter goes.
+
+## Running live
+
+`every:` names a schedule. Watchers with `every: frequent` run from a cron in GitHub Actions.
+For alerts within a minute, run the `live` ones in a loop on a machine that stays on:
+
+```sh
+uv run python -m tripwire serve watchers --every live            # one pass a minute
+uv run python -m tripwire serve watchers --every live --interval 30
+```
+
+It needs `GH_READ_TOKEN`. Webhooks (instant) are not possible for repos you don't own, so
+polling is as fast as it gets. Unchanged responses cost nothing against GitHub's rate limit.
 
 ## Adding a hook
 
@@ -89,7 +138,7 @@ instead of recording an empty snapshot. Add a unit test next to the other hook t
 
 ## Testing a watcher
 
-Add `case.yaml` next to your `watcher.yaml`. A case is a short script of what the watched page
+Add `case.yaml` (or several: `case-sep.yaml`, `case-feed.yaml`) next to your `watcher.yaml`. A case is a short script of what the watched page
 looks like over time and what you expect to be told. The harness (`tests/test_cases.py`)
 runs every case, so there is nothing else to wire up.
 
@@ -118,6 +167,10 @@ stages:
     serve: {https://example.com/status.md: {text: "404: Not Found"}}
     expect: {reports: ["ERROR"]}
 ```
+
+A case can also say `only: [watcher names]` to run just some of the watchers in the file, and
+`env: {GH_READ_TOKEN: test-token}` for variables the watchers need. In `serve:`, the key is
+a watcher name or its url; use the name when several watchers share a url (GraphQL does).
 
 **Fixtures are real GitHub commits, not files in the repo.** A stage serves either
 `owner/repo@<full commit sha>:path` or literal `text:`. The first time a commit is used it is
